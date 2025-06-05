@@ -11,19 +11,14 @@ export default () => {
     return (
         <RN.ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 38 }}>
             <FormSwitchRow
-                label="Suppress Guild"
-                value={storage["server"]}
-                onValueChange={(v: boolean) => storage["server"] = v}
+                label="Remove blocked messages"
+                value={storage["blocked"]}
+                onValueChange={(v: boolean) => storage["blocked"] = v}
             />
             <FormSwitchRow
-                label="Suppress @everyone and @here"
-                value={storage["everyone"]}
-                onValueChange={(v: boolean) => storage["everyone"] = v}
-            />
-            <FormSwitchRow
-                label="Suppress All Role @mentions"
-                value={storage["roles"]}
-                onValueChange={(v: boolean) => storage["roles"] = v}
+                label="Remove ignored messages"
+                value={storage["ignored"]}
+                onValueChange={(v: boolean) => storage["ignored"] = v}
             />
         </RN.ScrollView>
     );
