@@ -123,7 +123,6 @@ export default {
         logger.log(`${pluginName} unloaded.`);
     },
 
-        settings:()=>{
-        return <Settings/>
+        settings: Settings
     }
 };
