@@ -123,6 +123,5 @@ export default {
         logger.log(`${pluginName} unloaded.`);
     },
 
-        settings: Settings
-    }
+    settings: Settings
 };
