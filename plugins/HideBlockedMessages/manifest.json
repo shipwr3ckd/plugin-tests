@@ -1,0 +1,14 @@
+{
+    "name": "HideBlockedAndIgnoredMessages",
+    "description": "A plugin that removes the `X blocked or ignored message/s` prompt from chat.",
+    "authors": [
+        {
+            "name": "Zykrah, forked by シグマ siguma",
+            "id": "737597276339437578"
+        }
+    ],
+    "main": "src/index.ts",
+    "vendetta": {
+        "icon": "ic_badge_staff"
+    }
+}
