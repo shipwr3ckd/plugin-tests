@@ -2,6 +2,7 @@ import { FluxDispatcher } from '@vendetta/metro/common';
 import { before } from "@vendetta/patcher";
 import { findByProps, findByName } from "@vendetta/metro";
 import { logger } from "@vendetta";
+import { storage } from "@vendetta/plugin";
 import Settings from "./settings";
 
 const RowManager = findByName("RowManager");
