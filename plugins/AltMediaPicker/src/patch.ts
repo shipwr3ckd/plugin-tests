@@ -7,7 +7,7 @@ function mediapick(channelId) {
     findByProps("launchImageLibrary").launchImageLibrary(
         {
             mediaType: "photo",
-            selectionLimit: 10,
+            selectionLimit: 9,
         },
         ({ assets }) => {
             if (!assets) return;
