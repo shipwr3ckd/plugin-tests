@@ -11,9 +11,7 @@ const getBotLabel = TagModule.getBotLabel;
 const GuildStore = findByStoreName("GuildStore");
 
 export default () => after("type", Rows.GuildMemberRow, ([{ guildId, channel, user }], ret) => {
-    if (!ret) return;
-
-    const tagComponent = findInReactTree(ret, (c) => c?.type?.Types);
+    const tagComponent = findInReactTree(ret, (c) => c.type.Types)
     if (!tagComponent || !BUILT_IN_TAGS.includes(getBotLabel(tagComponent.props.type))) {
         const guild = GuildStore.getGuild(guildId)
         const tag = getTag(guild, channel, user)

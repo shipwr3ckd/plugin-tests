@@ -20,9 +20,7 @@ export default () => {
     }))
 
     patches.push(after("default", DisplayName, ([{ guildId, channelId, user }], ret) => {
-    if (!ret) return;
-
-    const tagComponent = findInReactTree(ret, (c) => c?.type?.Types);
+        const tagComponent = findInReactTree(ret, (c) => c.type.Types)
         if (!tagComponent || !BUILT_IN_TAGS.includes(getBotLabel(tagComponent.props.type))) {
             const guild = GuildStore.getGuild(guildId)
             const channel = ChannelStore.getChannel(channelId)
