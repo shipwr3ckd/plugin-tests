@@ -1,0 +1,14 @@
+{
+    "name": "Staff Tags",
+    "description": "Shows extra tags for staff members.",
+    "authors": [
+        {
+            "name": "Fiery",
+            "id": "890228870559698955"
+        }
+    ],
+    "main": "src/index.ts",
+    "vendetta": {
+        "icon": "ic_moderation_24px"
+    }
+}
