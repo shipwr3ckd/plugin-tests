@@ -11,11 +11,11 @@ let patches = [];
 export default {
     onLoad: () => {
         storage.useRoleColor ??= false
-        patches.push(patchChat())
-        patches.push(patchTag())
-        patches.push(patchName())
-        patches.push(patchSidebar())
-        patches.push(patchDetails())
+        //patches.push(patchChat())
+        //patches.push(patchTag())
+        //patches.push(patchName())
+        //patches.push(patchSidebar())
+        //patches.push(patchDetails())
     },
     onUnload: () => patches.forEach(unpatch => unpatch()),
     settings: Settings
