@@ -12,8 +12,8 @@ export default {
     onLoad: () => {
         storage.useRoleColor ??= false
         patches.push(patchChat())
-        /patches.push(patchTag())
-        //patches.push(patchName())
+        patches.push(patchTag())
+        patches.push(patchName())
         //patches.push(patchSidebar())
         //patches.push(patchDetails())
     },
