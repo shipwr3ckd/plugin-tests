@@ -14,7 +14,7 @@ export default {
         patches.push(patchChat())
         patches.push(patchTag())
         patches.push(patchName())
-        //patches.push(patchSidebar())
+        patches.push(patchSidebar())
         patches.push(patchDetails())
     },
     onUnload: () => patches.forEach(unpatch => unpatch()),
