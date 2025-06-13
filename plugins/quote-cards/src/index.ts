@@ -1,72 +1,61 @@
-import { before } from "@vendetta/patcher";
-import { findByStoreName } from "@vendetta/metro";
-import { getAssetIDByName } from "@vendetta/ui/assets";
-import { showToast } from "@vendetta/ui/toasts";
-import { ReactNative as RN } from "@vendetta/metro/common";
+import { registerCommand } from "@vendetta/commands"; import { findByProps, findByStoreName } from "@vendetta/metro"; import { showToast } from "@vendetta/ui/toasts";
 
-const MessageStore = findByStoreName("MessageStore");
-const ChannelStore = findByStoreName("ChannelStore");
-const PendingReplyStore = findByStoreName("PendingReplyStore");
+const MessageStore = findByStoreName("MessageStore"); const UserStore = findByStoreName("UserStore"); const { uploadLocalFiles } = findByProps("uploadLocalFiles"); const { getToken } = findByProps("getToken"); const token = getToken();
 
-let unpatch: any;
+let unregister;
 
-export default {
-  onLoad() {
-    const MessageEvents = findByStoreName("MessageStore");
+export default { onLoad() { unregister = registerCommand({ name: "quote", displayName: "quote", description: "Generate a quote image from a message", displayDescription: "Generate a quote image from a message", inputType: 1, type: 1, applicationId: "-1", execute: async (_, ctx) => { const reply = ctx?.messageReference?.message_id; if (!reply) { showToast("Reply to a message to quote it."); return { content: "❌ Please reply to a message." }; }
 
-    unpatch = before("sendMessage", MessageEvents, ([channelId, message]) => {
-      if (!message.content?.startsWith("/quote")) return;
+const message = MessageStore.getMessage(ctx.channel.id, reply);
+    if (!message) {
+      showToast("Unable to find the message.");
+      return { content: "❌ Failed to find message." };
+    }
 
-      const reply = PendingReplyStore.getPendingReply(channelId)?.message;
-      if (!reply) {
-        showToast("Use /quote as a reply to a message", getAssetIDByName("Small"));
-        return;
-      }
+    const author = UserStore.getUser(message.author.id);
+    const username = author?.username ?? "Unknown";
+    const avatar = `https://cdn.discordapp.com/avatars/${author.id}/${author.avatar}.png?size=4096`;
 
-      const { content, timestamp, author } = reply;
-      const username = author.global_name || author.username;
-      const avatarUrl = `https://cdn.discordapp.com/avatars/${author.id}/${author.avatar}.png?size=4096`;
+    const payload = {
+      text: message.content,
+      username,
+      timestamp: message.timestamp ?? Date.now(),
+      avatarUrl: avatar,
+    };
 
-      fetch("https://quote-cardgen.onrender.com/api/generate", {
+    try {
+      const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          text: content,
-          username,
-          timestamp,
-          avatarUrl
-        })
-      })
-        .then(async (res) => {
-          if (!res.ok) throw new Error(await res.text());
-          const blob = await res.blob();
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64 = reader.result as string;
-            RN.NativeModules.ImagePickerModule.uploadImage(channelId, {
-              content: "",
-              file: {
-                name: "quote.png",
-                type: "image/png",
-                data: base64.split(",")[1],
-              },
-              replyMessageId: reply.id,
-            });
-          };
-          reader.readAsDataURL(blob);
-        })
-        .catch((err) => {
-          console.error("Quote Error:", err);
-          showToast("Failed to send quote image", getAssetIDByName("Small"));
-        });
+        body: JSON.stringify(payload),
+      });
 
-      message.content = ""; // prevent default message send
-    });
+      if (!res.ok) throw new Error("Bad response from API");
+
+      const blob = await res.blob();
+      const file = new File([blob], "quote.png", { type: "image/png" });
+
+      return uploadLocalFiles([
+        {
+          channelId: ctx.channel.id,
+          files: [file],
+          message: { content: "", tts: false },
+          replyTo: reply,
+          token,
+        },
+      ]);
+    } catch (e) {
+      console.error("Failed to send quote", e);
+      showToast("❌ Error generating quote");
+      return { content: "❌ Failed to generate quote." };
+    }
   },
+});
 
-  onUnload() {
-    unpatch?.();
-  }
-};
+},
+
+onUnload() { unregister?.(); }, };
+
+      
