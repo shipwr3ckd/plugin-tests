@@ -1,6 +1,10 @@
-import patchActionSheet, { onUnload as unloadActionSheet } from "./patches/actionsheet";
+import patchActionSheet, { unpatchActionSheet } from "./patches/actionsheet";
 
 export default {
-  onLoad: patchActionSheet,
-  onUnload: unloadActionSheet,
+  onLoad: () => {
+    patchActionSheet();
+  },
+  onUnload: () => {
+    unpatchActionSheet?.();
+  },
 };
