@@ -4,22 +4,24 @@ import { after } from "@vendetta/patcher";
 import { getAssetIDByName } from "@vendetta/ui/assets";
 import { showToast } from "@vendetta/ui/toasts";
 import { findInReactTree } from "@vendetta/utils";
+import { storage } from "@vendetta/plugin";
+import { getToken } from "@vendetta/plugin/../api";
+import { uploadLocalFiles } from "@vendetta/plugins/../api/utils";
 
 const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
 const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
 const MessageStore = findByStoreName("MessageStore");
 const UserStore = findByStoreName("UserStore");
-const { uploadLocalFiles } = findByProps("uploadLocalFiles");
-const { getToken } = findByProps("getToken");
 
 let unpatch: () => void;
 
-export function onLoad() {
-  unpatch = after("openLazy", LazyActionSheet, ([component, key, data]) => {
+export default function patchActionSheet() {
+  return after("openLazy", LazyActionSheet, ([component, key, data]) => {
     if (key !== "MessageLongPressActionSheet") return;
 
     component.then((instance) => {
-      after("default", instance, (_, res) => {
+      unpatch?.(); // Unpatch previous if exists
+      unpatch = after("default", instance, (_, res) => {
         const message = data?.message;
         if (!message) return;
 
@@ -28,7 +30,9 @@ export function onLoad() {
         );
         if (!buttons) return;
 
-        const alreadyAdded = buttons.find((b) => b?.props?.label === "Quote Message");
+        const alreadyAdded = buttons.some(
+          (x) => x?.props?.label === "Quote Message"
+        );
         if (alreadyAdded) return;
 
         const pos = Math.max(
@@ -48,6 +52,8 @@ export function onLoad() {
               avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=256`,
             };
 
+            showToast("⚙️ Generating quote...");
+
             const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -57,18 +63,26 @@ export function onLoad() {
             if (!res.ok) throw new Error("Failed to generate image");
 
             const arrayBuf = await res.arrayBuffer();
-            const blob = new Blob([arrayBuf], { type: "image/png" });
-            const file = new File([blob], "quote.png", { type: "image/png" });
+            const binary = Array.from(new Uint8Array(arrayBuf)).map(b => String.fromCharCode(b)).join("");
+            const base64 = btoa(binary);
+            const dataUri = `data:image/png;base64,${base64}`;
 
-            showToast("✅ Quote generated, sending...");
+            console.log("✅ Quote generated. Uploading...");
+
+            showToast("✅ Quote generated. Uploading...");
 
             uploadLocalFiles?.([{
               channelId: message.channel_id,
-              parsedMessage: { content: "", tts: false, invalidEmojis: [], validNonShortcutEmojis: [] },
+              parsedMessage: {
+                content: "",
+                tts: false,
+                invalidEmojis: [],
+                validNonShortcutEmojis: [],
+              },
               items: [
                 {
                   item: {
-                    uri: file,
+                    uri: dataUri,
                     filename: "quote.png",
                     mimeType: "image/png",
                     width: 500,
@@ -82,15 +96,15 @@ export function onLoad() {
                   mimeType: "image/png",
                   filename: "quote.png",
                   id: "quote",
-                  uri: file,
+                  uri: dataUri,
                   channelId: message.channel_id,
                 }
               ],
               token: getToken()
             }]);
           } catch (err) {
+            console.error("❌ Quote generation error:", err);
             showToast("❌ Quote generation failed");
-            console.error("Quote generation error:", err);
           } finally {
             LazyActionSheet.hideActionSheet();
           }
@@ -122,4 +136,4 @@ export function onLoad() {
 
 export function onUnload() {
   unpatch?.();
-              }
+}
