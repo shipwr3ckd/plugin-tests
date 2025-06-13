@@ -21,10 +21,7 @@ export default function patchActionSheet() {
     if (key !== "MessageLongPressActionSheet") return;
 
     component.then((instance) => {
-      after("default", instance, (_, res) => {
-        const message = data?.message;
-        if (!message) return;
-
+      after("default", instance, ([args], res) => {
         const buttons = findInReactTree(res, (x) =>
           Array.isArray(x) && x.some((y) => y?.type === ActionSheetRow)
         );
@@ -39,11 +36,25 @@ export default function patchActionSheet() {
 
         const sendQuote = async () => {
           try {
+            const messageId = data?.message?.id;
+            const channelId = data?.message?.channel_id;
+
+            if (!messageId || !channelId) {
+              showToast("❌ Failed to locate message");
+              return;
+            }
+
+            const message = MessageStore.getMessage(channelId, messageId);
+            if (!message) {
+              showToast("❌ Could not fetch message content");
+              return;
+            }
+
             const author = message.author ?? UserStore.getUser(message.author?.id);
             const timestamp = new Date(message.timestamp).toISOString();
 
             const body = {
-              text: message.content.replace(/[\u{1F3FB}-\u{1FAFF}\u200D\uFE0F]/gu, ""), // strip emojis
+              text: message.content.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, ""),
               username: author?.username ?? "Unknown",
               timestamp,
               avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=4096`,
@@ -57,7 +68,7 @@ export default function patchActionSheet() {
 
             if (!res.ok) {
               showToast("❌ Failed to generate quote");
-              console.error("❌ Quote API returned:", res.status);
+              console.error("❌ Quote API error:", res.status);
               return;
             }
 
@@ -66,26 +77,26 @@ export default function patchActionSheet() {
 
             if (!imageUrl || typeof imageUrl !== "string") {
               showToast("❌ Invalid image URL returned");
-              console.error("❌ Quote API response missing or invalid URL:", json);
+              console.error("❌ Bad response:", json);
               return;
             }
 
             const { sendMessage } = findByProps("sendMessage");
 
-            sendMessage(message.channel_id, {
+            sendMessage(channelId, {
               content: imageUrl,
               message_reference: {
                 message_id: message.id,
-                channel_id: message.channel_id,
+                channel_id: channelId,
                 guild_id: message.guild_id ?? undefined,
               },
             });
 
             showToast("✅ Quote sent!");
-            console.log("✅ Quote URL:", imageUrl);
+            console.log("✅ Sent quote image:", imageUrl);
           } catch (e) {
             showToast("❌ Error sending quote");
-            console.error("❌ Quote generation failed:", e);
+            console.error("❌ Exception:", e);
           } finally {
             LazyActionSheet.hideActionSheet();
           }
