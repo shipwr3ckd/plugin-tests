@@ -28,10 +28,10 @@ export default function patchActionSheet() {
         );
         if (!buttons) return;
 
-        const alreadyPatched = buttons.some(
+        const alreadyExists = buttons.some(
           (btn) => btn?.props?.label === "Quote Message"
         );
-        if (alreadyPatched) return;
+        if (alreadyExists) return;
 
         const pos = Math.max(
           buttons.findIndex((x) => x?.props?.label === "Copy Text"),
@@ -56,19 +56,21 @@ export default function patchActionSheet() {
               body: JSON.stringify(body),
             });
 
-            if (!res.ok) throw new Error("Image generation failed");
+            if (!res.ok) throw new Error("Quote card API request failed");
 
             const blob = await res.blob();
-
             const reader = new FileReader();
+
             reader.onloadend = async () => {
               const base64 = reader.result?.split(",")[1];
-              if (!base64) throw new Error("Failed to read image data");
+              if (!base64) throw new Error("Failed to get base64");
+
+              const uri = `data:image/png;base64,${base64}`;
 
               const items = [
                 {
                   item: {
-                    uri: `data:image/png;base64,${base64}`,
+                    uri,
                     filename: "quote.png",
                     mimeType: "image/png",
                     isImage: true,
@@ -88,17 +90,18 @@ export default function patchActionSheet() {
               ]);
 
               showToast("✅ Quote sent!");
+              console.log("[QuoteCard] Quote sent successfully.");
             };
 
             reader.onerror = (err) => {
-              console.error("❌ Failed to read blob:", err);
-              showToast("❌ Failed to read image data");
+              console.error("❌ Failed to read image:", err);
+              showToast("❌ Error reading image");
             };
 
             reader.readAsDataURL(blob);
           } catch (err) {
             console.error("❌ Quote generation failed:", err);
-            showToast("❌ Failed to send quote");
+            showToast("❌ Quote generation failed");
           } finally {
             LazyActionSheet.hideActionSheet();
           }
@@ -130,4 +133,4 @@ export default function patchActionSheet() {
 
 export function onUnload() {
   if (unpatch) unpatch();
-                            }
+            }
