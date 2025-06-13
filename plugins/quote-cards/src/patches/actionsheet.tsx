@@ -102,6 +102,11 @@ export default function patchActionSheet() {
                     channel_id: channelId,
                     guild_id: message.guild_id ?? undefined,
                   },
+                  allowed_mentions: {
+                    parse: [],
+                    replied_user: false,
+                  },
+                  tts: false,
                 });
 
                 showToast("✅ Quote sent!");
