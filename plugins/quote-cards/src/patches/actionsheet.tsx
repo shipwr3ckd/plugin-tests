@@ -1,10 +1,8 @@
 import { findByProps } from "@vendetta/metro";
 import { after } from "@vendetta/patcher";
-import { showActionSheet } from "@vendetta/ui/actionsheets";
 import { getAssetIDByName } from "@vendetta/ui/assets";
 
 const { openLazy } = findByProps("openLazy", "hideActionSheet");
-const openSheet = openLazy?.constructor === Function ? openLazy : null;
 
 let unpatch;
 export default () => {
@@ -52,6 +50,8 @@ async function generateAndSendQuote(message) {
       body: JSON.stringify(payload),
     });
 
+    if (!res.ok) throw new Error("Quote API failed");
+
     const blob = await res.blob();
     const arrayBuffer = await blob.arrayBuffer();
     const file = new File([arrayBuffer], "quote.png", { type: "image/png" });
@@ -87,8 +87,10 @@ async function generateAndSendQuote(message) {
       validNonShortcutEmojis: [],
     };
 
+    // Sending image using uploadLocalFiles
     uploadLocalFiles([{ ctx: { channel: message.channel_id }, items, token, parsedMessage }]);
+
   } catch (err) {
     console.error("❌ Quote generation failed:", err);
   }
-      
+          }
