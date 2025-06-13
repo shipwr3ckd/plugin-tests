@@ -21,7 +21,7 @@ export default function patchActionSheet() {
     if (key !== "MessageLongPressActionSheet") return;
 
     component.then((instance) => {
-      after("default", instance, ([args], res) => {
+      after("default", instance, (_, res) => {
         const buttons = findInReactTree(res, (x) =>
           Array.isArray(x) && x.some((y) => y?.type === ActionSheetRow)
         );
@@ -33,74 +33,6 @@ export default function patchActionSheet() {
           buttons.findIndex((x) => x?.props?.label === "Copy Text"),
           1
         );
-
-        const sendQuote = async () => {
-          try {
-            const messageId = data?.message?.id;
-            const channelId = data?.message?.channel_id;
-
-            if (!messageId || !channelId) {
-              showToast("❌ Failed to locate message");
-              return;
-            }
-
-            const message = MessageStore.getMessage(channelId, messageId);
-            if (!message) {
-              showToast("❌ Could not fetch message content");
-              return;
-            }
-
-            const author = message.author ?? UserStore.getUser(message.author?.id);
-            const timestamp = new Date(message.timestamp).toISOString();
-
-            const body = {
-              text: message.content.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, ""),
-              username: author?.username ?? "Unknown",
-              timestamp,
-              avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=4096`,
-            };
-
-            const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body),
-            });
-
-            if (!res.ok) {
-              showToast("❌ Failed to generate quote");
-              console.error("❌ Quote API error:", res.status);
-              return;
-            }
-
-            const json = await res.json();
-            const imageUrl = json?.url;
-
-            if (!imageUrl || typeof imageUrl !== "string") {
-              showToast("❌ Invalid image URL returned");
-              console.error("❌ Bad response:", json);
-              return;
-            }
-
-            const { sendMessage } = findByProps("sendMessage");
-
-            sendMessage(channelId, {
-              content: imageUrl,
-              message_reference: {
-                message_id: message.id,
-                channel_id: channelId,
-                guild_id: message.guild_id ?? undefined,
-              },
-            });
-
-            showToast("✅ Quote sent!");
-            console.log("✅ Sent quote image:", imageUrl);
-          } catch (e) {
-            showToast("❌ Error sending quote");
-            console.error("❌ Exception:", e);
-          } finally {
-            LazyActionSheet.hideActionSheet();
-          }
-        };
 
         buttons.splice(
           pos,
@@ -118,7 +50,72 @@ export default function patchActionSheet() {
                 )}
               />
             }
-            onPress={sendQuote}
+            onPress={async () => {
+              try {
+                const messageId = data?.message?.id;
+                const channelId = data?.message?.channel_id;
+
+                if (!messageId || !channelId) {
+                  showToast("❌ Failed to locate message");
+                  return;
+                }
+
+                const message = MessageStore.getMessage(channelId, messageId);
+                if (!message) {
+                  showToast("❌ Could not fetch message content");
+                  return;
+                }
+
+                const author = message.author ?? UserStore.getUser(message.author?.id);
+                const timestamp = new Date(message.timestamp).toISOString();
+
+                const body = {
+                  text: message.content.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, ""),
+                  username: author?.username ?? "Unknown",
+                  timestamp,
+                  avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=4096`,
+                };
+
+                const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
+                });
+
+                if (!res.ok) {
+                  showToast("❌ Failed to generate quote");
+                  console.error("❌ Quote API error:", res.status);
+                  return;
+                }
+
+                const json = await res.json();
+                const imageUrl = json?.url;
+
+                if (!imageUrl || typeof imageUrl !== "string") {
+                  showToast("❌ Invalid image URL returned");
+                  console.error("❌ Bad response:", json);
+                  return;
+                }
+
+                const { sendMessage } = findByProps("sendMessage");
+
+                sendMessage(channelId, {
+                  content: imageUrl,
+                  message_reference: {
+                    message_id: message.id,
+                    channel_id: channelId,
+                    guild_id: message.guild_id ?? undefined,
+                  },
+                });
+
+                showToast("✅ Quote sent!");
+              } catch (e) {
+                showToast("❌ Error sending quote");
+                console.error("❌ Exception:", e);
+              } finally {
+                LazyActionSheet.hideActionSheet();
+              }
+            }}
           />
         );
       });
