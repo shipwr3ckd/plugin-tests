@@ -7,105 +7,120 @@ import { findInReactTree } from "@vendetta/utils";
 
 const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
 const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
+const MessageStore = findByStoreName("MessageStore");
 const UserStore = findByStoreName("UserStore");
 const { uploadLocalFiles } = findByProps("uploadLocalFiles");
-const token = findByProps("getToken")?.getToken();
+const token = findByProps("getToken")?.getToken?.();
 
-let unpatch: () => void;
+let unpatchActionSheetInternal: () => void;
+
+export const unpatchActionSheet = () => {
+  unpatchActionSheetInternal?.();
+};
 
 export default function patchActionSheet() {
-  return after("openLazy", LazyActionSheet, ([component, key, data]) => {
+  const unpatch = after("openLazy", LazyActionSheet, ([component, key, data]) => {
     if (key !== "MessageLongPressActionSheet") return;
 
     component.then((instance) => {
-      unpatch = after("default", instance, (_, res) => {
+      unpatchActionSheetInternal = after("default", instance, (_, res) => {
         const message = data?.message;
-        if (!message) {
-          console.warn("[QuoteCard] No message found in action sheet data.");
-          return;
-        }
+        if (!message) return;
 
         const buttons = findInReactTree(res, (x) =>
-          Array.isArray(x) && x.every((y) => y?.type === ActionSheetRow)
+          Array.isArray(x) && x.some((y) => y?.type === ActionSheetRow)
         );
-        if (!buttons) {
-          console.warn("[QuoteCard] Couldn't find action sheet buttons.");
-          return;
-        }
+        if (!buttons) return;
 
         // Avoid duplicate buttons
-        if (buttons.some((b) => b?.props?.label === "Quote Message")) return;
+        if (buttons.find((b) => b?.props?.label === "Quote Message")) return;
+
+        const author = message.author || UserStore.getUser(message.author?.id);
+        const timestamp = new Date(message.timestamp).toISOString();
+
+        const avatarUrl = author?.avatar
+          ? `https://cdn.discordapp.com/avatars/${author.id}/${author.avatar}.png?size=256`
+          : `https://cdn.discordapp.com/embed/avatars/${(parseInt(author.id) >> 22) % 5}.png`;
 
         const sendQuote = async () => {
           try {
-            console.log("[QuoteCard] sendQuote triggered.");
-            const author = message.author || UserStore.getUser(message.author?.id);
-            const timestamp = new Date(message.timestamp).toISOString();
-
-            const body = {
+            showToast("🖼️ Generating quote...");
+            console.log("📤 Sending to quote generator", {
               text: message.content,
-              username: author?.username ?? "Unknown",
+              username: author?.username,
               timestamp,
-              avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=256`,
-            };
+              avatarUrl,
+            });
 
-            console.log("[QuoteCard] Sending request to card API...");
             const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body),
+              body: JSON.stringify({
+                text: message.content,
+                username: author?.username ?? "Unknown",
+                timestamp,
+                avatarUrl,
+              }),
             });
 
-            if (!res.ok) throw new Error(`Card API failed with status ${res.status}`);
+            if (!res.ok) {
+              showToast("❌ Quote generation failed");
+              console.error("Quote generation failed: HTTP", res.status);
+              return;
+            }
 
             const blob = await res.blob();
-            const reader = new FileReader();
+            const file = new File([blob], "quote.png", { type: "image/png" });
 
-            reader.onloadend = async () => {
-              const base64 = reader.result?.split(",")[1];
-              if (!base64) throw new Error("Base64 conversion failed.");
-
-              const uri = `data:image/png;base64,${base64}`;
-              const items = [
-                {
-                  item: {
-                    uri,
-                    filename: "quote.png",
-                    mimeType: "image/png",
-                    isImage: true,
-                  },
-                },
-              ];
-
-              console.log("[QuoteCard] Uploading image using uploadLocalFiles...");
-              await uploadLocalFiles([
-                {
-                  channelId: message.channel_id,
-                  items,
-                  token,
-                  parsedMessage: { content: "" },
-                },
-              ]);
-
-              showToast("✅ Quote sent!");
-              console.log("[QuoteCard] Upload success.");
+            const parsedMessage = {
+              content: "",
+              tts: false,
+              invalidEmojis: [],
+              validNonShortcutEmojis: [],
             };
 
-            reader.onerror = (e) => {
-              console.error("[QuoteCard] FileReader error", e);
-              showToast("❌ Error reading image");
-            };
+            const items = [
+              {
+                item: {
+                  id: "quote",
+                  uri: URL.createObjectURL(file),
+                  originalUri: URL.createObjectURL(file),
+                  mimeType: "image/png",
+                  filename: "quote.png",
+                  width: 500,
+                  height: 500,
+                  platform: 0,
+                },
+                id: "quote",
+                filename: "quote.png",
+                isImage: true,
+                mimeType: "image/png",
+                channelId: message.channel_id,
+              },
+            ];
 
-            reader.readAsDataURL(blob);
-          } catch (err) {
-            console.error("[QuoteCard] Error:", err);
-            showToast("❌ Quote generation failed");
+            await uploadLocalFiles?.([
+              {
+                ctx: { channel: message.channel_id },
+                items,
+                token,
+                parsedMessage,
+              },
+            ]);
+
+            showToast("✅ Quote sent!");
+            console.log("✅ Quote uploaded");
+          } catch (e) {
+            showToast("❌ Error sending quote");
+            console.error("Quote generation error:", e);
           } finally {
             LazyActionSheet.hideActionSheet();
           }
         };
 
-        buttons.push(
+        buttons.splice(
+          1,
+          0,
           <ActionSheetRow
             label="Quote Message"
             icon={
@@ -122,12 +137,9 @@ export default function patchActionSheet() {
             onPress={sendQuote}
           />
         );
-        console.log("[QuoteCard] Quote Message button injected.");
       });
     });
   });
-}
 
-export function onUnload() {
-  if (unpatch) unpatch();
-          }
+  unpatchActionSheetInternal = unpatch;
+              }
