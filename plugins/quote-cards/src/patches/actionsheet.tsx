@@ -16,54 +16,51 @@ export const onUnload = () => {
 };
 
 export default function patchActionSheet() {
-  unpatch = after("openLazy", LazyActionSheet, ([component, key, data]) => {
+  unpatch = after("openLazy", LazyActionSheet, ([component, key]) => {
     if (key !== "MessageLongPressActionSheet") return;
 
     component.then((instance) => {
       after("default", instance, ([props], res) => {
-        const buttons = findInReactTree(res, (x) =>
-          Array.isArray(x) && x.some((y) => y?.type === ActionSheetRow)
+        const buttons = findInReactTree(res, x =>
+          Array.isArray(x) && x.some(y => y?.type === ActionSheetRow)
         );
-        if (!buttons || buttons.some((x) => x?.props?.label === "Quote Message")) return;
+        if (!buttons || buttons.some(x => x?.props?.label === "Quote Message")) return;
 
         const pos = Math.max(
-          buttons.findIndex((x) => x?.props?.label === "Copy Text"),
+          buttons.findIndex(x => x?.props?.label === "Copy Text"),
           1
         );
 
-        buttons.splice(
-          pos,
-          0,
+        const iconName = "ic_chat_bubble_24px"; // correct 24px icon
+
+        buttons.splice(pos, 0,
           <ActionSheetRow
             label="Quote Message"
             icon={
               <ActionSheetRow.Icon
-                source={getAssetIDByName("ic_chat_bubble")}
+                source={getAssetIDByName(iconName)}
                 IconComponent={() => (
                   <ReactNative.Image
                     style={{ width: 24, height: 24 }}
-                    source={getAssetIDByName("ic_chat_bubble")}
+                    source={getAssetIDByName(iconName)}
                   />
                 )}
               />
             }
             onPress={async () => {
               try {
-                const messageId = props?.message?.id;
-                const channelId = props?.message?.channel_id;
-                if (!messageId || !channelId) return;
+                const { message } = props;
+                if (!message?.id || !message?.channel_id) return;
 
-                const message = MessageStore.getMessage(channelId, messageId);
-                if (!message) return;
+                const msg = MessageStore.getMessage(message.channel_id, message.id);
+                if (!msg) return;
 
-                const author = message.author ?? UserStore.getUser(message.author?.id);
-                const timestamp = new Date(message.timestamp).toISOString();
-
+                const author = msg.author ?? UserStore.getUser(msg.author?.id);
                 const body = {
-                  text: message.content.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, ""),
+                  text: msg.content.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, ""),
                   username: author?.username ?? "Unknown",
-                  timestamp,
-                  avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=4096`,
+                  timestamp: new Date(msg.timestamp).toISOString(),
+                  avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=4096`
                 };
 
                 const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
@@ -77,7 +74,7 @@ export default function patchActionSheet() {
                 if (!imageUrl || typeof imageUrl !== "string") return;
 
                 const { sendMessage } = findByProps("sendMessage");
-                sendMessage(channelId, { content: imageUrl });
+                sendMessage(message.channel_id, { content: imageUrl });
               } catch (err) {
                 console.error("Quote error", err);
               } finally {
