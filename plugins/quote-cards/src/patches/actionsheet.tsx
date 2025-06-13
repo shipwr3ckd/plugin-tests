@@ -10,18 +10,18 @@ const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
 const MessageStore = findByStoreName("MessageStore");
 const UserStore = findByStoreName("UserStore");
 
-const uploadProps = findByProps("uploadLocalFiles");
-const { uploadLocalFiles } = uploadProps ?? {};
-const { getToken } = findByProps("getToken");
-
 let unpatch: () => void;
 
+export const onUnload = () => {
+  unpatch?.();
+};
+
 export default function patchActionSheet() {
-  return after("openLazy", LazyActionSheet, ([component, key, data]) => {
+  unpatch = after("openLazy", LazyActionSheet, ([component, key, data]) => {
     if (key !== "MessageLongPressActionSheet") return;
 
     component.then((instance) => {
-      unpatch = after("default", instance, (_, res) => {
+      after("default", instance, (_, res) => {
         const message = data?.message;
         if (!message) return;
 
@@ -30,6 +30,7 @@ export default function patchActionSheet() {
         );
         if (!buttons) return;
 
+        // Prevent duplicates
         if (buttons.some((x) => x?.props?.label === "Quote Message")) return;
 
         const pos = Math.max(
@@ -49,63 +50,38 @@ export default function patchActionSheet() {
               avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=256`,
             };
 
-            showToast("⚙️ Generating quote...");
-
             const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(body),
             });
 
-            if (!res.ok) throw new Error("Failed to generate image");
+            if (!res.ok) {
+              showToast("❌ Failed to generate quote");
+              console.error("❌ Quote API returned:", res.status);
+              return;
+            }
 
-            const arrayBuf = await res.arrayBuffer();
-            const binary = Array.from(new Uint8Array(arrayBuf)).map((b) =>
-              String.fromCharCode(b)
-            ).join("");
-            const base64 = btoa(binary);
-            const dataUri = `data:image/png;base64,${base64}`;
+            const json = await res.json();
+            const imageUrl = json?.url;
 
-            const item = {
-              uri: dataUri,
-              filename: "quote.png",
-              mimeType: "image/png",
-              width: 500,
-              height: 200,
-              id: `${Date.now()}`, // must be string
-              platform: 0,
-              origin: 1,
-            };
+            if (!imageUrl) {
+              showToast("❌ No image URL returned");
+              console.error("❌ Quote API response missing URL:", json);
+              return;
+            }
 
-            const token = getToken();
-            console.log("✅ Uploading quote.png...");
-            showToast("📤 Uploading quote...");
-
-            uploadLocalFiles?.({
-              channelId: message.channel_id,
-              parsedMessage: {
-                content: "",
-                tts: false,
-                invalidEmojis: [],
-                validNonShortcutEmojis: [],
-              },
-              items: [
-                {
-                  item,
-                  isImage: true,
-                  isVideo: false,
-                  filename: "quote.png",
-                  mimeType: "image/png",
-                  id: item.id,
-                  uri: dataUri,
-                  channelId: message.channel_id,
-                },
-              ],
-              token,
+            // Send message with image URL
+            const sendMessage = findByProps("sendMessage").sendMessage;
+            sendMessage(message.channel_id, {
+              content: imageUrl,
             });
-          } catch (err) {
-            console.error("❌ Quote generation error:", err);
-            showToast("❌ Quote generation failed");
+
+            showToast("✅ Quote sent!");
+            console.log("✅ Quote URL:", imageUrl);
+          } catch (e) {
+            showToast("❌ Error sending quote");
+            console.error("❌ Quote generation failed:", e);
           } finally {
             LazyActionSheet.hideActionSheet();
           }
@@ -133,8 +109,4 @@ export default function patchActionSheet() {
       });
     });
   });
-}
-
-export function onUnload() {
-  unpatch?.();
 }
