@@ -17,17 +17,21 @@ export const onUnload = () => {
 };
 
 export default function patchActionSheet() {
-  unpatch = after("openLazy", LazyActionSheet, ([component, key, data]) => {
-    if (key !== "MessageLongPressActionSheet") return;
+  // Patch only once: the default MessageLongPressActionSheet
+  LazyActionSheet.openLazy("MessageLongPressActionSheet", async () => {
+    const mod = await import("@vendetta/ui/components/MessageLongPressActionSheet");
+    if (!mod?.default) return mod;
 
-    component.then((instance) => {
-      after("default", instance, (_, res) => {
+    const original = mod.default;
+
+    mod.default = (props: any) => {
+      const res = original(props);
+
+      try {
         const buttons = findInReactTree(res, (x) =>
           Array.isArray(x) && x.some((y) => y?.type === ActionSheetRow)
         );
-        if (!buttons) return;
-
-        if (buttons.some((x) => x?.props?.label === "Quote Message")) return;
+        if (!buttons || buttons.some((x) => x?.props?.label === "Quote Message")) return res;
 
         const pos = Math.max(
           buttons.findIndex((x) => x?.props?.label === "Copy Text"),
@@ -52,8 +56,8 @@ export default function patchActionSheet() {
             }
             onPress={async () => {
               try {
-                const messageId = data?.message?.id;
-                const channelId = data?.message?.channel_id;
+                const messageId = props?.message?.id;
+                const channelId = props?.message?.channel_id;
 
                 if (!messageId || !channelId) {
                   showToast("❌ Failed to locate message");
@@ -118,7 +122,13 @@ export default function patchActionSheet() {
             }}
           />
         );
-      });
-    });
+      } catch (e) {
+        console.error("Quote patch error:", e);
+      }
+
+      return res;
+    };
+
+    return mod;
   });
 }
