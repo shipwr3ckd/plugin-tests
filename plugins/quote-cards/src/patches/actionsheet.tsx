@@ -26,31 +26,34 @@ export default function patchActionSheet() {
         );
         if (!buttons || buttons.some(x => x?.props?.label === "Quote Message")) return;
 
-        const pos = Math.max(
+        // Find Reply button and insert before it
+        const replyIndex = buttons.findIndex(x => x?.props?.label === "Reply");
+        const insertIndex = replyIndex > -1 ? replyIndex : Math.max(
           buttons.findIndex(x => x?.props?.label === "Copy Text"),
-          1
+          0
         );
 
-        buttons.splice(pos, 0,
+        buttons.splice(insertIndex, 0,
           <ActionSheetRow
             label="Quote Message"
             icon={
               <ActionSheetRow.Icon
-                source={getAssetIDByName(ic_chat_24px)}
+                source={getAssetIDByName("ic_chat_24px")}
                 IconComponent={() => (
                   <ReactNative.Image
                     style={{ width: 24, height: 24 }}
-                    source={getAssetIDByName(ic_chat_24px)}
+                    source={getAssetIDByName("ic_chat_24px")}
                   />
                 )}
               />
             }
             onPress={async () => {
               try {
-                const { message } = props;
-                if (!message?.id || !message?.channel_id) return;
+                const msgId = props?.message?.id;
+                const chanId = props?.message?.channel_id;
+                if (!msgId || !chanId) return;
 
-                const msg = MessageStore.getMessage(message.channel_id, message.id);
+                const msg = MessageStore.getMessage(chanId, msgId);
                 if (!msg) return;
 
                 const author = msg.author ?? UserStore.getUser(msg.author?.id);
@@ -58,7 +61,7 @@ export default function patchActionSheet() {
                   text: msg.content.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, ""),
                   username: author?.username ?? "Unknown",
                   timestamp: new Date(msg.timestamp).toISOString(),
-                  avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=4096`
+                  avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=4096`,
                 };
 
                 const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
@@ -72,9 +75,9 @@ export default function patchActionSheet() {
                 if (!imageUrl || typeof imageUrl !== "string") return;
 
                 const { sendMessage } = findByProps("sendMessage");
-                sendMessage(message.channel_id, { content: imageUrl });
-              } catch (err) {
-                console.error("Quote error", err);
+                sendMessage(chanId, { content: imageUrl });
+              } catch (e) {
+                console.error("Quote error", e);
               } finally {
                 LazyActionSheet.hideActionSheet();
               }
