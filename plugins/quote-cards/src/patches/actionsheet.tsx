@@ -9,7 +9,9 @@ const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
 const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
 const MessageStore = findByStoreName("MessageStore");
 const UserStore = findByStoreName("UserStore");
-const { uploadLocalFiles } = findByProps("uploadLocalFiles") ?? {};
+
+const uploadProps = findByProps("uploadLocalFiles");
+const { uploadLocalFiles } = uploadProps ?? {};
 const { getToken } = findByProps("getToken");
 
 let unpatch: () => void;
@@ -28,10 +30,7 @@ export default function patchActionSheet() {
         );
         if (!buttons) return;
 
-        const alreadyExists = buttons.some(
-          (x) => x?.props?.label === "Quote Message"
-        );
-        if (alreadyExists) return;
+        if (buttons.some((x) => x?.props?.label === "Quote Message")) return;
 
         const pos = Math.max(
           buttons.findIndex((x) => x?.props?.label === "Copy Text"),
@@ -67,8 +66,20 @@ export default function patchActionSheet() {
             const base64 = btoa(binary);
             const dataUri = `data:image/png;base64,${base64}`;
 
-            showToast("✅ Quote generated, sending...");
+            const item = {
+              uri: dataUri,
+              filename: "quote.png",
+              mimeType: "image/png",
+              width: 500,
+              height: 200,
+              id: `${Date.now()}`, // must be string
+              platform: 0,
+              origin: 1,
+            };
+
+            const token = getToken();
             console.log("✅ Uploading quote.png...");
+            showToast("📤 Uploading quote...");
 
             uploadLocalFiles?.({
               channelId: message.channel_id,
@@ -80,26 +91,17 @@ export default function patchActionSheet() {
               },
               items: [
                 {
-                  item: {
-                    uri: dataUri,
-                    filename: "quote.png",
-                    mimeType: "image/png",
-                    width: 500,
-                    height: 200,
-                    id: "quote",
-                    platform: 0,
-                    origin: 1,
-                  },
+                  item,
                   isImage: true,
                   isVideo: false,
-                  mimeType: "image/png",
                   filename: "quote.png",
-                  id: "quote",
+                  mimeType: "image/png",
+                  id: item.id,
                   uri: dataUri,
                   channelId: message.channel_id,
                 },
               ],
-              token: getToken(),
+              token,
             });
           } catch (err) {
             console.error("❌ Quote generation error:", err);
