@@ -9,15 +9,19 @@ const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
 const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
 const MessageStore = findByStoreName("MessageStore");
 const UserStore = findByStoreName("UserStore");
+const { uploadLocalFiles } = findByProps("uploadLocalFiles");
+const token = findByProps("getToken")?.getToken();
 
 let unpatchLazy: (() => void) | undefined;
+let unpatchInstance: (() => void) | undefined;
 
 export function patchActionSheet() {
   unpatchLazy = after("openLazy", LazyActionSheet, ([component, key, data]) => {
     if (key !== "MessageLongPressActionSheet") return;
 
     component.then((instance) => {
-      after("default", instance, (_, res) => {
+      unpatchInstance?.(); // Unpatch previous if exists
+      unpatchInstance = after("default", instance, (_, res) => {
         const message = data?.message;
         if (!message) return;
 
@@ -25,6 +29,11 @@ export function patchActionSheet() {
           Array.isArray(x) && x.some((y) => y?.type === ActionSheetRow)
         );
         if (!buttons) return;
+
+        const alreadyExists = buttons.some(
+          (btn) => btn?.props?.label === "Quote Message"
+        );
+        if (alreadyExists) return;
 
         const pos = Math.max(
           buttons.findIndex((x) => x?.props?.label === "Copy Text"),
@@ -49,39 +58,37 @@ export function patchActionSheet() {
               body: JSON.stringify(body),
             });
 
-            if (!res.ok) {
-              showToast("❌ Failed to generate quote");
-              return;
-            }
+            if (!res.ok) throw new Error("Image generation failed");
 
             const blob = await res.blob();
-            const reader = new FileReader();
+            const file = new File([blob], "quote.png", { type: "image/png" });
 
-            reader.onloadend = () => {
-              const base64 = reader.result as string;
+            const items = [
+              {
+                item: {
+                  uri: URL.createObjectURL(file),
+                  filename: "quote.png",
+                  mimeType: "image/png",
+                  isImage: true,
+                },
+              },
+            ];
 
-              // Send image as base64 in chat
-              window.vendetta.plugins.sendMessage(
-                message.channel_id,
-                {
-                  content: "",
-                  attachments: [
-                    {
-                      id: "0",
-                      filename: "quote.png",
-                      content_type: "image/png",
-                      size: blob.size,
-                      url: base64,
-                    },
-                  ],
-                }
-              );
-            };
+            const parsedMessage = { content: "" };
 
-            reader.readAsDataURL(blob);
-          } catch (e) {
-            showToast("❌ Error sending quote");
-            console.error("Quote error:", e);
+            await uploadLocalFiles([
+              {
+                channelId: message.channel_id,
+                items,
+                token,
+                parsedMessage,
+              },
+            ]);
+
+            showToast("✅ Quote sent!");
+          } catch (err) {
+            console.error("❌ Quote generation failed:", err);
+            showToast("❌ Failed to send quote");
           } finally {
             LazyActionSheet.hideActionSheet();
           }
@@ -113,4 +120,5 @@ export function patchActionSheet() {
 
 export function unpatchActionSheetFn() {
   unpatchLazy?.();
-}
+  unpatchInstance?.();
+          }
