@@ -1,0 +1,12 @@
+{
+    "name": "Quote Cards",
+    "description": "Quote someone's reply.",
+    "authors": [
+        {
+            "name": "シグマ siguma",
+            "id": "737597276339437578"
+        }
+    ],
+    "main": "src/index.tsx"
+    }
+}
