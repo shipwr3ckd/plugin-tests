@@ -30,7 +30,6 @@ export default function patchActionSheet() {
         );
         if (!buttons) return;
 
-        // Prevent duplicates
         if (buttons.some((x) => x?.props?.label === "Quote Message")) return;
 
         const pos = Math.max(
@@ -47,7 +46,7 @@ export default function patchActionSheet() {
               text: message.content,
               username: author?.username ?? "Unknown",
               timestamp,
-              avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=256`,
+              avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=4096`,
             };
 
             const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
@@ -65,13 +64,12 @@ export default function patchActionSheet() {
             const json = await res.json();
             const imageUrl = json?.url;
 
-            if (!imageUrl) {
-              showToast("❌ No image URL returned");
-              console.error("❌ Quote API response missing URL:", json);
+            if (!imageUrl || typeof imageUrl !== "string") {
+              showToast("❌ Invalid image URL returned");
+              console.error("❌ Quote API response missing or invalid URL:", json);
               return;
             }
 
-            // Send message with image URL
             const sendMessage = findByProps("sendMessage").sendMessage;
             sendMessage(message.channel_id, {
               content: imageUrl,
