@@ -8,4 +8,7 @@
         }
     ],
     "main": "src/index.ts"
+    "vendetta": {
+        "icon": "ic_chat_bubble"
+    }
 }
