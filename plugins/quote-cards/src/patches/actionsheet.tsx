@@ -12,16 +12,14 @@ const UserStore = findByStoreName("UserStore");
 const { uploadLocalFiles } = findByProps("uploadLocalFiles");
 const token = findByProps("getToken")?.getToken();
 
-let unpatchLazy: (() => void) | undefined;
-let unpatchInstance: (() => void) | undefined;
+let unpatch;
 
-export function patchActionSheet() {
-  unpatchLazy = after("openLazy", LazyActionSheet, ([component, key, data]) => {
+export default function patchActionSheet() {
+  return after("openLazy", LazyActionSheet, ([component, key, data]) => {
     if (key !== "MessageLongPressActionSheet") return;
 
     component.then((instance) => {
-      unpatchInstance?.(); // Unpatch previous if exists
-      unpatchInstance = after("default", instance, (_, res) => {
+      unpatch = after("default", instance, (_, res) => {
         const message = data?.message;
         if (!message) return;
 
@@ -30,10 +28,10 @@ export function patchActionSheet() {
         );
         if (!buttons) return;
 
-        const alreadyExists = buttons.some(
+        const alreadyPatched = buttons.some(
           (btn) => btn?.props?.label === "Quote Message"
         );
-        if (alreadyExists) return;
+        if (alreadyPatched) return;
 
         const pos = Math.max(
           buttons.findIndex((x) => x?.props?.label === "Copy Text"),
@@ -61,31 +59,43 @@ export function patchActionSheet() {
             if (!res.ok) throw new Error("Image generation failed");
 
             const blob = await res.blob();
-            const file = new File([blob], "quote.png", { type: "image/png" });
 
-            const items = [
-              {
-                item: {
-                  uri: URL.createObjectURL(file),
-                  filename: "quote.png",
-                  mimeType: "image/png",
-                  isImage: true,
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+              const base64 = reader.result?.split(",")[1];
+              if (!base64) throw new Error("Failed to read image data");
+
+              const items = [
+                {
+                  item: {
+                    uri: `data:image/png;base64,${base64}`,
+                    filename: "quote.png",
+                    mimeType: "image/png",
+                    isImage: true,
+                  },
                 },
-              },
-            ];
+              ];
 
-            const parsedMessage = { content: "" };
+              const parsedMessage = { content: "" };
 
-            await uploadLocalFiles([
-              {
-                channelId: message.channel_id,
-                items,
-                token,
-                parsedMessage,
-              },
-            ]);
+              await uploadLocalFiles([
+                {
+                  channelId: message.channel_id,
+                  items,
+                  token,
+                  parsedMessage,
+                },
+              ]);
 
-            showToast("✅ Quote sent!");
+              showToast("✅ Quote sent!");
+            };
+
+            reader.onerror = (err) => {
+              console.error("❌ Failed to read blob:", err);
+              showToast("❌ Failed to read image data");
+            };
+
+            reader.readAsDataURL(blob);
           } catch (err) {
             console.error("❌ Quote generation failed:", err);
             showToast("❌ Failed to send quote");
@@ -118,7 +128,6 @@ export function patchActionSheet() {
   });
 }
 
-export function unpatchActionSheetFn() {
-  unpatchLazy?.();
-  unpatchInstance?.();
-          }
+export function onUnload() {
+  if (unpatch) unpatch();
+                            }
