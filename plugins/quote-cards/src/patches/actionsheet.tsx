@@ -51,7 +51,6 @@ export default function patchActionSheet() {
               try {
                 const messageId = props?.message?.id;
                 const channelId = props?.message?.channel_id;
-
                 if (!messageId || !channelId) return;
 
                 const message = MessageStore.getMessage(channelId, messageId);
@@ -72,19 +71,13 @@ export default function patchActionSheet() {
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify(body),
                 });
-
                 if (!res.ok) return;
 
-                const json = await res.json();
-                const imageUrl = json?.url;
-
+                const imageUrl = (await res.json())?.url;
                 if (!imageUrl || typeof imageUrl !== "string") return;
 
                 const { sendMessage } = findByProps("sendMessage");
-
-                sendMessage(channelId, {
-                  content: imageUrl,
-                });
+                sendMessage(channelId, { content: imageUrl });
               } catch (err) {
                 console.error("Quote error", err);
               } finally {
