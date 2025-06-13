@@ -1,6 +1,6 @@
-import { onLoad, onUnload } from "./patches/actionsheet";
+import patchActionSheet, { onUnload as unloadActionSheet } from "./patches/actionsheet";
 
 export default {
-  onLoad,
-  onUnload,
+  onLoad: patchActionSheet,
+  onUnload: unloadActionSheet,
 };
