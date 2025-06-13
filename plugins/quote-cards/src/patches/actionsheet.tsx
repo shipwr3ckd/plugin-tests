@@ -9,15 +9,15 @@ const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
 const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
 const MessageStore = findByStoreName("MessageStore");
 const UserStore = findByStoreName("UserStore");
-const { uploadLocalFiles } = findByProps("uploadLocalFiles");
-const { getToken } = findByProps("getToken");
 
-export default function patchActionSheet() {
-  return after("openLazy", LazyActionSheet, ([component, key, data]) => {
+let unpatchLazy: (() => void) | undefined;
+
+export function patchActionSheet() {
+  unpatchLazy = after("openLazy", LazyActionSheet, ([component, key, data]) => {
     if (key !== "MessageLongPressActionSheet") return;
 
     component.then((instance) => {
-      const unpatch = after("default", instance, (_, res) => {
+      after("default", instance, (_, res) => {
         const message = data?.message;
         if (!message) return;
 
@@ -40,7 +40,7 @@ export default function patchActionSheet() {
               text: message.content,
               username: author?.username ?? "Unknown",
               timestamp,
-              avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=4096`,
+              avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=256`,
             };
 
             const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
@@ -55,40 +55,30 @@ export default function patchActionSheet() {
             }
 
             const blob = await res.blob();
-            const buffer = await blob.arrayBuffer();
-            const file = new File([buffer], "quote.png", { type: "image/png" });
+            const reader = new FileReader();
 
-            const items = [
-              {
-                item: {
-                  id: "quote",
-                  uri: file.uri ?? "",
-                  originalUri: file.uri ?? "",
-                  mimeType: "image/png",
-                  filename: "quote.png",
-                  width: 800,
-                  height: 400,
-                  playableDuration: 0,
-                },
-                id: "quote",
-                filename: "quote.png",
-                isImage: true,
-                isVideo: false,
-                mimeType: "image/png",
-                origin: 1,
-              },
-            ];
+            reader.onloadend = () => {
+              const base64 = reader.result as string;
 
-            const parsedMessage = {
-              content: "",
-              tts: false,
-              invalidEmojis: [],
-              validNonShortcutEmojis: [],
+              // Send image as base64 in chat
+              window.vendetta.plugins.sendMessage(
+                message.channel_id,
+                {
+                  content: "",
+                  attachments: [
+                    {
+                      id: "0",
+                      filename: "quote.png",
+                      content_type: "image/png",
+                      size: blob.size,
+                      url: base64,
+                    },
+                  ],
+                }
+              );
             };
 
-            const token = getToken();
-            uploadLocalFiles([{ ctx: { channel: message.channel_id }, items, token, parsedMessage }]);
-
+            reader.readAsDataURL(blob);
           } catch (e) {
             showToast("❌ Error sending quote");
             console.error("Quote error:", e);
@@ -101,7 +91,7 @@ export default function patchActionSheet() {
           pos,
           0,
           <ActionSheetRow
-            label="📋 Quote Message"
+            label="Quote Message"
             icon={
               <ActionSheetRow.Icon
                 source={getAssetIDByName("ic_message")}
@@ -119,4 +109,8 @@ export default function patchActionSheet() {
       });
     });
   });
-                                                                             }
+}
+
+export function unpatchActionSheetFn() {
+  unpatchLazy?.();
+}
