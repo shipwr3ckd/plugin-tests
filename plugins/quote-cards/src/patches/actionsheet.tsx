@@ -2,26 +2,31 @@ import { findByProps } from "@vendetta/metro";
 import { after } from "@vendetta/patcher";
 import { getAssetIDByName } from "@vendetta/ui/assets";
 
-const { openLazy } = findByProps("openLazy", "hideActionSheet");
+const ActionSheet = findByProps("openLazy", "hideActionSheet");
+const { uploadLocalFiles } = findByProps("uploadLocalFiles");
+const { getToken } = findByProps("getToken");
 
 let unpatch;
+
 export default () => {
-  unpatch = after("openLazy", findByProps("openLazy"), ([sheet, args], res) => {
-    if (!args?.[0]?.message) return;
+  unpatch = after("openLazy", ActionSheet, ([component, args], res) => {
+    if (component !== "MessageLongPressActionSheet") return;
 
-    const message = args[0].message;
+    const message = args?.[0]?.message;
+    if (!message?.author?.id || !message?.content) return;
 
-    after("default", res, ([component]) => {
-      const render = component?.type?.render;
+    after("default", res, ([sheet]) => {
+      const render = sheet?.type?.render;
       if (!render) return;
 
-      after("render", render, ([sheetProps], comp) => {
-        const rows = sheetProps?.actionSheet?.rows;
+      after("render", render, ([renderArgs], comp) => {
+        const rows = renderArgs?.actionSheet?.rows;
         if (!Array.isArray(rows)) return;
 
         rows.push({
           label: "📋 Quote Message",
-          icon: getAssetIDByName("Quote"),
+          icon: getAssetIDByName("ic_copy_message_link"),
+          isDestructive: false,
           onPress: () => generateAndSendQuote(message),
         });
       });
@@ -29,13 +34,10 @@ export default () => {
   });
 };
 
-export const onUnload = () => {
-  unpatch?.();
-};
+export const onUnload = () => unpatch?.();
 
 async function generateAndSendQuote(message) {
   const avatarUrl = `https://cdn.discordapp.com/avatars/${message.author.id}/${message.author.avatar}.png?size=4096`;
-
   const payload = {
     text: message.content,
     username: message.author.username,
@@ -50,19 +52,17 @@ async function generateAndSendQuote(message) {
       body: JSON.stringify(payload),
     });
 
-    if (!res.ok) throw new Error("Quote API failed");
+    if (!res.ok) throw new Error("Quote API returned an error");
 
     const blob = await res.blob();
     const arrayBuffer = await blob.arrayBuffer();
     const file = new File([arrayBuffer], "quote.png", { type: "image/png" });
 
-    const { uploadLocalFiles } = findByProps("uploadLocalFiles");
-    const token = findByProps("getToken").getToken();
-
+    const token = getToken();
     const items = [
       {
         item: {
-          id: "quote",
+          id: "quote-card",
           uri: file.uri ?? "",
           originalUri: file.uri ?? "",
           mimeType: "image/png",
@@ -71,7 +71,7 @@ async function generateAndSendQuote(message) {
           height: 400,
           playableDuration: 0,
         },
-        id: "quote",
+        id: "quote-card",
         filename: "quote.png",
         isImage: true,
         isVideo: false,
@@ -87,10 +87,8 @@ async function generateAndSendQuote(message) {
       validNonShortcutEmojis: [],
     };
 
-    // Sending image using uploadLocalFiles
     uploadLocalFiles([{ ctx: { channel: message.channel_id }, items, token, parsedMessage }]);
-
   } catch (err) {
-    console.error("❌ Quote generation failed:", err);
+    console.error("❌ Failed to generate and send quote:", err);
   }
-          }
+    }
