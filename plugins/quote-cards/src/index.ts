@@ -12,11 +12,21 @@ export default {
     unregister = registerCommand({
       name: "quote",
       displayName: "quote",
-      description: "Quote a replied message as an image",
-      displayDescription: "Quote a replied message as an image",
+      description: "Quote a message from a Discord message link",
+      displayDescription: "Quote a message from a Discord message link",
       applicationId: "-1",
       inputType: 1,
       type: 1,
+      options: [
+        {
+          name: "link",
+          displayName: "link",
+          description: "The Discord message link",
+          displayDescription: "The Discord message link",
+          type: 3,
+          required: true,
+        },
+      ],
       execute: quoteCommand,
     });
   },
@@ -26,15 +36,25 @@ export default {
   },
 };
 
-async function quoteCommand(_, ctx) {
-  const ref = ctx?.message?.message_reference;
-  if (!ref?.message_id) {
-    return { content: "❌ Please reply to a message when using `/quote`." };
+function parseMessageLink(link: string) {
+  const match = link.match(/discord\.com\/channels\/(?:\d+|@me)\/(\d+)\/(\d+)/);
+  if (!match) return null;
+  return { channelId: match[1], messageId: match[2] };
+}
+
+async function quoteCommand(args, ctx) {
+  const link = args[0]?.value;
+  const parsed = parseMessageLink(link);
+
+  if (!parsed) {
+    return { content: "❌ Invalid message link format." };
   }
 
-  const quotedMessage = MessageStore.getMessage(ref.channel_id, ref.message_id);
+  const { channelId, messageId } = parsed;
+  const quotedMessage = MessageStore.getMessage(channelId, messageId);
+
   if (!quotedMessage) {
-    return { content: "❌ Couldn't find the replied message." };
+    return { content: "❌ Message not found. It may not be loaded into memory yet." };
   }
 
   const { content, timestamp, author } = quotedMessage;
@@ -43,15 +63,13 @@ async function quoteCommand(_, ctx) {
   try {
     const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         text: content,
         username: author.username,
         timestamp,
-        avatarUrl
-      })
+        avatarUrl,
+      }),
     });
 
     if (!res.ok) return { content: "❌ Failed to generate quote card." };
@@ -86,4 +104,4 @@ async function quoteCommand(_, ctx) {
     console.error("Quote error:", err);
     return { content: "❌ An error occurred while sending the quote." };
   }
-}
+      }
