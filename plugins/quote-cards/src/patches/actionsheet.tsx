@@ -1,5 +1,5 @@
 import { findByProps, findByStoreName } from "@vendetta/metro";
-import { React, ReactNative } from "@vendetta/metro/common";
+import { React } from "@vendetta/metro/common";
 import { after } from "@vendetta/patcher";
 import { getAssetIDByName } from "@vendetta/ui/assets";
 import { findInReactTree } from "@vendetta/utils";
@@ -26,7 +26,6 @@ export default function patchActionSheet() {
         );
         if (!buttons || buttons.some(x => x?.props?.label === "Quote Message")) return;
 
-        // Find Reply button and insert before it
         const replyIndex = buttons.findIndex(x => x?.props?.label === "Reply");
         const insertIndex = replyIndex > -1 ? replyIndex : Math.max(
           buttons.findIndex(x => x?.props?.label === "Copy Text"),
@@ -39,12 +38,6 @@ export default function patchActionSheet() {
             icon={
               <ActionSheetRow.Icon
                 source={getAssetIDByName("ic_chat_24px")}
-                IconComponent={() => (
-                  <ReactNative.Image
-                    style={{ width: 24, height: 24 }}
-                    source={getAssetIDByName("ic_chat_24px")}
-                  />
-                )}
               />
             }
             onPress={async () => {
