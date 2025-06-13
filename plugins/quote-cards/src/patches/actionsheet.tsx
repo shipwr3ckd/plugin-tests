@@ -1,94 +1,93 @@
 import { findByProps, findByStoreName } from "@vendetta/metro";
-import { before } from "@vendetta/patcher";
-import { React, ReactNative, stylesheet } from "@vendetta/metro/common";
-import { getAssetIDByName } from "@vendetta/ui/assets";
-import { Forms } from "@vendetta/ui/components";
-import { findInReactTree } from "@vendetta/utils";
+import { FluxDispatcher, React, ReactNative, i18n, stylesheet } from "@vendetta/metro/common";
+import { after } from "@vendetta/patcher";
 import { showToast } from "@vendetta/ui/toasts";
+import { getAssetIDByName } from "@vendetta/ui/assets";
+import { findInReactTree } from "@vendetta/utils";
 
 const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
-const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow ?? Forms.FormRow;
+const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
 const MessageStore = findByStoreName("MessageStore");
-const MessageActions = findByProps("sendMessage", "receiveMessage");
 
 const styles = stylesheet.createThemedStyleSheet({
-  iconComponent: { width: 24, height: 24, tintColor: "#5865F2" },
+  icon: {
+    width: 24,
+    height: 24,
+    tintColor: "#fff",
+  },
 });
 
-export function patchActionSheet() {
-  return before("openLazy", LazyActionSheet, ([, key, data]) => {
-    const msg = data?.message;
-    if (key !== "MessageLongPressActionSheet" || !msg) return;
+export default function patchActionSheet() {
+  return after("openLazy", LazyActionSheet, ([component, key, ctx]) => {
+    if (key !== "MessageLongPressActionSheet" || !ctx?.message) return;
 
-    data.component.then((instance) => {
-      const unpatch = before("default", instance, (_, res) => {
+    component.then((sheet: any) => {
+      const unpatch = after("default", sheet, (_, res) => {
         React.useEffect(() => () => unpatch(), []);
 
-        const rows = findInReactTree(res, (x) =>
-          Array.isArray(x) &&
-          x.find((r: any) => r?.type?.displayName === ActionSheetRow.displayName)
+        const buttons = findInReactTree(res, (x) =>
+          Array.isArray(x) && x.some((y) => y?.type?.name === "ActionSheetRow")
         );
-        if (!rows) return;
+        if (!buttons) return;
 
-        const replyIdx = rows.findIndex((r: any) => r.props.label.includes("Reply"));
-        const pos = replyIdx >= 0 ? replyIdx + 1 : rows.length;
+        const message = MessageStore.getMessage(ctx.message.channel_id, ctx.message.id);
+        if (!message?.content) return;
 
-        rows.splice(pos, 0,
+        const icon = getAssetIDByName("ic_message_copy");
+
+        const onPress = async () => {
+          try {
+            const res = await fetch("https://quote-cardgen.onrender.com", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                content: message.content,
+                author: {
+                  name: message.author.username,
+                  avatar: `https://cdn.discordapp.com/avatars/${message.author.id}/${message.author.avatar}.png?size=128`,
+                },
+                timestamp: message.timestamp,
+              }),
+            });
+
+            const { url } = await res.json();
+
+            FluxDispatcher.dispatch({
+              type: "SEND_MESSAGE",
+              optimistic: true,
+              message: {
+                channelId: message.channel_id,
+                content: url,
+                validNonShortcut: true,
+                repliedMessageId: message.id,
+              },
+            });
+
+            showToast("Quote sent!", getAssetIDByName("toast_image"));
+          } catch (e) {
+            console.error("QuoteCard error:", e);
+            showToast("Failed to generate quote.");
+          } finally {
+            LazyActionSheet.hideActionSheet();
+          }
+        };
+
+        buttons.splice(
+          2,
+          0,
           <ActionSheetRow
             label="Quote Message"
             icon={
               <ActionSheetRow.Icon
-                source={getAssetIDByName("Quote")}
+                source={icon}
                 IconComponent={() => (
-                  <ReactNative.Image style={styles.iconComponent} source={getAssetIDByName("Quote")} />
+                  <ReactNative.Image source={icon} style={styles.icon} />
                 )}
               />
             }
-            onPress={async () => {
-              showToast("🎨 Generating quote…", getAssetIDByName("Small"));
-              const orig = MessageStore.getMessage(msg.channel_id, msg.id);
-              if (!orig) {
-                showToast("❌ Message not found.", getAssetIDByName("Small"));
-                LazyActionSheet.hideActionSheet();
-                return;
-              }
-
-              const avatarUrl = `https://cdn.discordapp.com/avatars/${orig.author.id}/${orig.author.avatar}.png?size=128`;
-              const payload = {
-                text: orig.content || "[No text]",
-                username: orig.author.username,
-                timestamp: orig.timestamp,
-                avatarUrl,
-              };
-
-              try {
-                const resp = await fetch("https://quote-cardgen.onrender.com/api/generate", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(payload),
-                });
-                if (!resp.ok) throw new Error("API failed");
-                const blob = await resp.blob();
-                const form = new FormData();
-                form.append("file", blob, "quote.png");
-
-                MessageActions.sendMessage(msg.channel_id, {
-                  content: "",
-                  messageReference: { message_id: msg.id },
-                  files: form,
-                  invalidEmojis: [],
-                  validNonShortcutEmojis: [],
-                  attachments: [],
-                });
-
-                showToast("✅ Quote sent!", getAssetIDByName("Check"));
-              } catch (e) {
-                console.error(e);
-                showToast("❌ Quote failed.", getAssetIDByName("Small"));
-              } finally {
-                LazyActionSheet.hideActionSheet();
-              }
-            }}
+            onPress={onPress}
           />
         );
       });
