@@ -2,7 +2,6 @@ import { findByProps, findByStoreName } from "@vendetta/metro";
 import { React, ReactNative } from "@vendetta/metro/common";
 import { after } from "@vendetta/patcher";
 import { getAssetIDByName } from "@vendetta/ui/assets";
-import { showToast } from "@vendetta/ui/toasts";
 import { findInReactTree } from "@vendetta/utils";
 
 const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
@@ -53,16 +52,10 @@ export default function patchActionSheet() {
                 const messageId = props?.message?.id;
                 const channelId = props?.message?.channel_id;
 
-                if (!messageId || !channelId) {
-                  showToast("❌ Could not identify message.");
-                  return;
-                }
+                if (!messageId || !channelId) return;
 
                 const message = MessageStore.getMessage(channelId, messageId);
-                if (!message) {
-                  showToast("❌ Message not found.");
-                  return;
-                }
+                if (!message) return;
 
                 const author = message.author ?? UserStore.getUser(message.author?.id);
                 const timestamp = new Date(message.timestamp).toISOString();
@@ -80,39 +73,20 @@ export default function patchActionSheet() {
                   body: JSON.stringify(body),
                 });
 
-                if (!res.ok) {
-                  showToast("❌ Quote API error");
-                  return;
-                }
+                if (!res.ok) return;
 
                 const json = await res.json();
                 const imageUrl = json?.url;
 
-                if (!imageUrl || typeof imageUrl !== "string") {
-                  showToast("❌ Invalid quote image URL");
-                  return;
-                }
+                if (!imageUrl || typeof imageUrl !== "string") return;
 
-                const MessageActions = findByProps("sendMessage");
+                const { sendMessage } = findByProps("sendMessage");
 
-                MessageActions.sendMessage(channelId, {
+                sendMessage(channelId, {
                   content: imageUrl,
-                  tts: false,
-                  message_reference: {
-                    message_id: message.id,
-                    channel_id: channelId,
-                    guild_id: message.guild_id ?? undefined,
-                  },
-                  allowed_mentions: {
-                    parse: [],
-                    replied_user: false,
-                  },
                 });
-
-                showToast("✅ Quote sent!");
               } catch (err) {
                 console.error("Quote error", err);
-                showToast("❌ Failed to send quote");
               } finally {
                 LazyActionSheet.hideActionSheet();
               }
