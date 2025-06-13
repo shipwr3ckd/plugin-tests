@@ -4,14 +4,13 @@ import { after } from "@vendetta/patcher";
 import { getAssetIDByName } from "@vendetta/ui/assets";
 import { showToast } from "@vendetta/ui/toasts";
 import { findInReactTree } from "@vendetta/utils";
-import { storage } from "@vendetta/plugin";
-import { getToken } from "@vendetta/plugin/../api";
-import { uploadLocalFiles } from "@vendetta/plugins/../api/utils";
 
 const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
 const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
 const MessageStore = findByStoreName("MessageStore");
 const UserStore = findByStoreName("UserStore");
+const { uploadLocalFiles } = findByProps("uploadLocalFiles") ?? {};
+const { getToken } = findByProps("getToken");
 
 let unpatch: () => void;
 
@@ -20,7 +19,6 @@ export default function patchActionSheet() {
     if (key !== "MessageLongPressActionSheet") return;
 
     component.then((instance) => {
-      unpatch?.(); // Unpatch previous if exists
       unpatch = after("default", instance, (_, res) => {
         const message = data?.message;
         if (!message) return;
@@ -30,10 +28,10 @@ export default function patchActionSheet() {
         );
         if (!buttons) return;
 
-        const alreadyAdded = buttons.some(
+        const alreadyExists = buttons.some(
           (x) => x?.props?.label === "Quote Message"
         );
-        if (alreadyAdded) return;
+        if (alreadyExists) return;
 
         const pos = Math.max(
           buttons.findIndex((x) => x?.props?.label === "Copy Text"),
@@ -63,15 +61,16 @@ export default function patchActionSheet() {
             if (!res.ok) throw new Error("Failed to generate image");
 
             const arrayBuf = await res.arrayBuffer();
-            const binary = Array.from(new Uint8Array(arrayBuf)).map(b => String.fromCharCode(b)).join("");
+            const binary = Array.from(new Uint8Array(arrayBuf)).map((b) =>
+              String.fromCharCode(b)
+            ).join("");
             const base64 = btoa(binary);
             const dataUri = `data:image/png;base64,${base64}`;
 
-            console.log("✅ Quote generated. Uploading...");
+            showToast("✅ Quote generated, sending...");
+            console.log("✅ Uploading quote.png...");
 
-            showToast("✅ Quote generated. Uploading...");
-
-            uploadLocalFiles?.([{
+            uploadLocalFiles?.({
               channelId: message.channel_id,
               parsedMessage: {
                 content: "",
@@ -98,10 +97,10 @@ export default function patchActionSheet() {
                   id: "quote",
                   uri: dataUri,
                   channelId: message.channel_id,
-                }
+                },
               ],
-              token: getToken()
-            }]);
+              token: getToken(),
+            });
           } catch (err) {
             console.error("❌ Quote generation error:", err);
             showToast("❌ Quote generation failed");
