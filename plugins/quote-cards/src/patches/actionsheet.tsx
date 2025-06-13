@@ -10,20 +10,16 @@ const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
 const MessageStore = findByStoreName("MessageStore");
 const UserStore = findByStoreName("UserStore");
 const { uploadLocalFiles } = findByProps("uploadLocalFiles");
-const token = findByProps("getToken")?.getToken?.();
+const { getToken } = findByProps("getToken");
 
-let unpatchActionSheetInternal: () => void;
+let unpatch: () => void;
 
-export const unpatchActionSheet = () => {
-  unpatchActionSheetInternal?.();
-};
-
-export default function patchActionSheet() {
-  const unpatch = after("openLazy", LazyActionSheet, ([component, key, data]) => {
+export function onLoad() {
+  unpatch = after("openLazy", LazyActionSheet, ([component, key, data]) => {
     if (key !== "MessageLongPressActionSheet") return;
 
     component.then((instance) => {
-      unpatchActionSheetInternal = after("default", instance, (_, res) => {
+      after("default", instance, (_, res) => {
         const message = data?.message;
         if (!message) return;
 
@@ -32,94 +28,76 @@ export default function patchActionSheet() {
         );
         if (!buttons) return;
 
-        // Avoid duplicate buttons
-        if (buttons.find((b) => b?.props?.label === "Quote Message")) return;
+        const alreadyAdded = buttons.find((b) => b?.props?.label === "Quote Message");
+        if (alreadyAdded) return;
 
-        const author = message.author || UserStore.getUser(message.author?.id);
-        const timestamp = new Date(message.timestamp).toISOString();
-
-        const avatarUrl = author?.avatar
-          ? `https://cdn.discordapp.com/avatars/${author.id}/${author.avatar}.png?size=256`
-          : `https://cdn.discordapp.com/embed/avatars/${(parseInt(author.id) >> 22) % 5}.png`;
+        const pos = Math.max(
+          buttons.findIndex((x) => x?.props?.label === "Copy Text"),
+          1
+        );
 
         const sendQuote = async () => {
           try {
-            showToast("🖼️ Generating quote...");
-            console.log("📤 Sending to quote generator", {
+            const author = message.author ?? UserStore.getUser(message.author?.id);
+            const timestamp = new Date(message.timestamp).toISOString();
+
+            const body = {
               text: message.content,
-              username: author?.username,
+              username: author?.username ?? "Unknown",
               timestamp,
-              avatarUrl,
-            });
+              avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=256`,
+            };
 
             const res = await fetch("https://quote-cardgen.onrender.com/api/generate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                text: message.content,
-                username: author?.username ?? "Unknown",
-                timestamp,
-                avatarUrl,
-              }),
+              body: JSON.stringify(body),
             });
 
-            if (!res.ok) {
-              showToast("❌ Quote generation failed");
-              console.error("Quote generation failed: HTTP", res.status);
-              return;
-            }
+            if (!res.ok) throw new Error("Failed to generate image");
 
-            const blob = await res.blob();
+            const arrayBuf = await res.arrayBuffer();
+            const blob = new Blob([arrayBuf], { type: "image/png" });
             const file = new File([blob], "quote.png", { type: "image/png" });
 
-            const parsedMessage = {
-              content: "",
-              tts: false,
-              invalidEmojis: [],
-              validNonShortcutEmojis: [],
-            };
+            showToast("✅ Quote generated, sending...");
 
-            const items = [
-              {
-                item: {
-                  id: "quote",
-                  uri: URL.createObjectURL(file),
-                  originalUri: URL.createObjectURL(file),
+            uploadLocalFiles?.([{
+              channelId: message.channel_id,
+              parsedMessage: { content: "", tts: false, invalidEmojis: [], validNonShortcutEmojis: [] },
+              items: [
+                {
+                  item: {
+                    uri: file,
+                    filename: "quote.png",
+                    mimeType: "image/png",
+                    width: 500,
+                    height: 200,
+                    id: "quote",
+                    platform: 0,
+                    origin: 1,
+                  },
+                  isImage: true,
+                  isVideo: false,
                   mimeType: "image/png",
                   filename: "quote.png",
-                  width: 500,
-                  height: 500,
-                  platform: 0,
-                },
-                id: "quote",
-                filename: "quote.png",
-                isImage: true,
-                mimeType: "image/png",
-                channelId: message.channel_id,
-              },
-            ];
-
-            await uploadLocalFiles?.([
-              {
-                ctx: { channel: message.channel_id },
-                items,
-                token,
-                parsedMessage,
-              },
-            ]);
-
-            showToast("✅ Quote sent!");
-            console.log("✅ Quote uploaded");
-          } catch (e) {
-            showToast("❌ Error sending quote");
-            console.error("Quote generation error:", e);
+                  id: "quote",
+                  uri: file,
+                  channelId: message.channel_id,
+                }
+              ],
+              token: getToken()
+            }]);
+          } catch (err) {
+            showToast("❌ Quote generation failed");
+            console.error("Quote generation error:", err);
           } finally {
             LazyActionSheet.hideActionSheet();
           }
         };
 
         buttons.splice(
-          1,
+          pos,
           0,
           <ActionSheetRow
             label="Quote Message"
@@ -140,6 +118,8 @@ export default function patchActionSheet() {
       });
     });
   });
+}
 
-  unpatchActionSheetInternal = unpatch;
+export function onUnload() {
+  unpatch?.();
               }
