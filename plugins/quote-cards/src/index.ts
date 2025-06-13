@@ -2,7 +2,6 @@ import { registerCommand } from "@vendetta/commands";
 import { findByProps, findByStoreName } from "@vendetta/metro";
 
 const MessageStore = findByStoreName("MessageStore");
-const UserStore = findByStoreName("UserStore");
 const { uploadLocalFiles } = findByProps("uploadLocalFiles");
 const token = findByProps("getToken").getToken();
 
@@ -28,12 +27,17 @@ export default {
 };
 
 async function quoteCommand(_, ctx) {
-  const reference = ctx?.message?.referenced_message;
-  if (!reference) {
+  const ref = ctx?.message?.message_reference;
+  if (!ref?.message_id) {
     return { content: "❌ Please reply to a message when using `/quote`." };
   }
 
-  const { content, timestamp, author } = reference;
+  const quotedMessage = MessageStore.getMessage(ref.channel_id, ref.message_id);
+  if (!quotedMessage) {
+    return { content: "❌ Couldn't find the replied message." };
+  }
+
+  const { content, timestamp, author } = quotedMessage;
   const avatarUrl = `https://cdn.discordapp.com/avatars/${author.id}/${author.avatar}.png?size=4096`;
 
   try {
@@ -50,9 +54,7 @@ async function quoteCommand(_, ctx) {
       })
     });
 
-    if (!res.ok) {
-      return { content: "❌ Failed to generate quote card." };
-    }
+    if (!res.ok) return { content: "❌ Failed to generate quote card." };
 
     const blob = await res.blob();
     const arrayBuffer = await blob.arrayBuffer();
@@ -72,11 +74,11 @@ async function quoteCommand(_, ctx) {
       validNonShortcutEmojis: [],
     };
 
-    await uploadLocalFiles([{ 
-      channelId: ctx.channel.id, 
-      items: [file], 
-      parsedMessage, 
-      token 
+    await uploadLocalFiles([{
+      channelId: ctx.channel.id,
+      items: [file],
+      parsedMessage,
+      token,
     }]);
 
     return null;
@@ -84,4 +86,4 @@ async function quoteCommand(_, ctx) {
     console.error("Quote error:", err);
     return { content: "❌ An error occurred while sending the quote." };
   }
-        }
+}
