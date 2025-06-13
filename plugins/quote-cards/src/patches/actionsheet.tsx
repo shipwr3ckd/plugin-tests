@@ -31,18 +31,16 @@ export default function patchActionSheet() {
           1
         );
 
-        const iconName = "ic_chat_bubble_24px"; // correct 24px icon
-
         buttons.splice(pos, 0,
           <ActionSheetRow
             label="Quote Message"
             icon={
               <ActionSheetRow.Icon
-                source={getAssetIDByName(iconName)}
+                source={getAssetIDByName(ic_chat_24px)}
                 IconComponent={() => (
                   <ReactNative.Image
                     style={{ width: 24, height: 24 }}
-                    source={getAssetIDByName(iconName)}
+                    source={getAssetIDByName(ic_chat_24px)}
                   />
                 )}
               />
