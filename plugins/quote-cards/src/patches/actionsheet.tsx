@@ -43,7 +43,7 @@ export default function patchActionSheet() {
             const timestamp = new Date(message.timestamp).toISOString();
 
             const body = {
-              text: message.content,
+              text: message.content.replace(/[\u{1F3FB}-\u{1FAFF}\u200D\uFE0F]/gu, ""), // strip emojis
               username: author?.username ?? "Unknown",
               timestamp,
               avatarUrl: `https://cdn.discordapp.com/avatars/${author?.id}/${author?.avatar}.png?size=4096`,
@@ -70,9 +70,15 @@ export default function patchActionSheet() {
               return;
             }
 
-            const sendMessage = findByProps("sendMessage").sendMessage;
+            const { sendMessage } = findByProps("sendMessage");
+
             sendMessage(message.channel_id, {
               content: imageUrl,
+              message_reference: {
+                message_id: message.id,
+                channel_id: message.channel_id,
+                guild_id: message.guild_id ?? undefined,
+              },
             });
 
             showToast("✅ Quote sent!");
