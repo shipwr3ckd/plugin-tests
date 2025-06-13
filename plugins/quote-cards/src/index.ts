@@ -1,11 +1,13 @@
-import { patchActionSheet } from "./patches/actionsheet";
+import patchActionSheet from "./patches/actionsheet";
 
-let unpatch: () => void;
+let unpatchActionSheet: () => void;
 
 export const onLoad = () => {
-  unpatch = patchActionSheet();
+  unpatchActionSheet = patchActionSheet();
 };
 
 export const onUnload = () => {
-  unpatch?.();
+  unpatchActionSheet?.();
 };
+
+export const settings = {};
