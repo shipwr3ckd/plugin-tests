@@ -17,21 +17,15 @@ export const onUnload = () => {
 };
 
 export default function patchActionSheet() {
-  // Patch only once: the default MessageLongPressActionSheet
-  LazyActionSheet.openLazy("MessageLongPressActionSheet", async () => {
-    const mod = await import("@vendetta/ui/components/MessageLongPressActionSheet");
-    if (!mod?.default) return mod;
+  unpatch = after("openLazy", LazyActionSheet, ([component, key, data]) => {
+    if (key !== "MessageLongPressActionSheet") return;
 
-    const original = mod.default;
-
-    mod.default = (props: any) => {
-      const res = original(props);
-
-      try {
+    component.then((instance) => {
+      after("default", instance, ([props], res) => {
         const buttons = findInReactTree(res, (x) =>
           Array.isArray(x) && x.some((y) => y?.type === ActionSheetRow)
         );
-        if (!buttons || buttons.some((x) => x?.props?.label === "Quote Message")) return res;
+        if (!buttons || buttons.some((x) => x?.props?.label === "Quote Message")) return;
 
         const pos = Math.max(
           buttons.findIndex((x) => x?.props?.label === "Copy Text"),
@@ -60,13 +54,13 @@ export default function patchActionSheet() {
                 const channelId = props?.message?.channel_id;
 
                 if (!messageId || !channelId) {
-                  showToast("❌ Failed to locate message");
+                  showToast("❌ Could not identify message.");
                   return;
                 }
 
                 const message = MessageStore.getMessage(channelId, messageId);
                 if (!message) {
-                  showToast("❌ Could not fetch message content");
+                  showToast("❌ Message not found.");
                   return;
                 }
 
@@ -87,8 +81,7 @@ export default function patchActionSheet() {
                 });
 
                 if (!res.ok) {
-                  showToast("❌ Failed to generate quote");
-                  console.error("❌ Quote API error:", res.status);
+                  showToast("❌ Quote API error");
                   return;
                 }
 
@@ -96,8 +89,7 @@ export default function patchActionSheet() {
                 const imageUrl = json?.url;
 
                 if (!imageUrl || typeof imageUrl !== "string") {
-                  showToast("❌ Invalid image URL returned");
-                  console.error("❌ Bad response:", json);
+                  showToast("❌ Invalid quote image URL");
                   return;
                 }
 
@@ -113,22 +105,16 @@ export default function patchActionSheet() {
                 });
 
                 showToast("✅ Quote sent!");
-              } catch (e) {
-                showToast("❌ Error sending quote");
-                console.error("❌ Exception:", e);
+              } catch (err) {
+                console.error("Quote error", err);
+                showToast("❌ Failed to send quote");
               } finally {
                 LazyActionSheet.hideActionSheet();
               }
             }}
           />
         );
-      } catch (e) {
-        console.error("Quote patch error:", e);
-      }
-
-      return res;
-    };
-
-    return mod;
+      });
+    });
   });
 }
