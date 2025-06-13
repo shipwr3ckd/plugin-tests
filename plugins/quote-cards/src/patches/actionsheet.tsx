@@ -93,10 +93,11 @@ export default function patchActionSheet() {
                   return;
                 }
 
-                const { sendMessage } = findByProps("sendMessage");
+                const MessageActions = findByProps("sendMessage");
 
-                sendMessage(channelId, {
+                MessageActions.sendMessage(channelId, {
                   content: imageUrl,
+                  tts: false,
                   message_reference: {
                     message_id: message.id,
                     channel_id: channelId,
@@ -106,7 +107,6 @@ export default function patchActionSheet() {
                     parse: [],
                     replied_user: false,
                   },
-                  tts: false,
                 });
 
                 showToast("✅ Quote sent!");
