@@ -38,11 +38,11 @@ export default function patchActionSheet() {
             label="Quote Message"
             icon={
               <ActionSheetRow.Icon
-                source={getAssetIDByName("ic_message")}
+                source={getAssetIDByName("ic_chat_bubble")}
                 IconComponent={() => (
                   <ReactNative.Image
                     style={{ width: 24, height: 24 }}
-                    source={getAssetIDByName("ic_message")}
+                    source={getAssetIDByName("ic_chat_bubble")}
                   />
                 )}
               />
