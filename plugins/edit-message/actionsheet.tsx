@@ -3,7 +3,6 @@ import { React } from "@vendetta/metro/common";
 import { after } from "@vendetta/patcher";
 import { getAssetIDByName } from "@vendetta/ui/assets";
 import { findInReactTree } from "@vendetta/utils";
-import { showModal, ModalRoot } from "@vendetta/ui/modals";
 
 const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
 const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
@@ -38,27 +37,17 @@ export function patchActionSheet() {
             }
             onPress={() => {
               try {
-                const msgId = props?.message?.id;
                 const chanId = props?.message?.channel_id;
-                if (!msgId || !chanId) return;
+                const msgId = props?.message?.id;
 
-                const msg = MessageStore.getMessage(chanId, msgId);
-                if (!msg) return;
+                if (!chanId || !msgId) return;
 
-                showModal(
-                  <ModalRoot
-                    title="Edit Message"
-                    defaultValue={msg.content}
-                    onClose={() => LazyActionSheet.hideActionSheet()}
-                    onSubmit={(newContent: string) => {
-                      const { editMessage } = findByProps("editMessage");
-                      editMessage(chanId, msgId, { content: newContent });
-                      LazyActionSheet.hideActionSheet();
-                    }}
-                  />
-                );
+                const { startEditMessage } = findByProps("startEditMessage");
+                startEditMessage(chanId, msgId);
               } catch (e) {
                 console.error("Edit Message error", e);
+              } finally {
+                LazyActionSheet.hideActionSheet();
               }
             }}
           />
