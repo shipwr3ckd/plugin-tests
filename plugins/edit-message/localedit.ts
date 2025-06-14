@@ -1,28 +1,27 @@
-import { findByStoreName } from "@vendetta/metro";
-import { instead } from "@vendetta/patcher";
+import { findByStoreName, findByProps } from "@vendetta/metro";
+import { after } from "@vendetta/patcher";
 
 const MessageStore = findByStoreName("MessageStore");
-const edits: Record<string, string> = {};
+const { getMessages } = MessageStore;
+const MessageActions = findByProps("sendMessage", "editMessage");
 
-export function setEditedContent(ch: string, id: string, text: string) {
-  edits[`${ch}_${id}`] = text;
-}
-
+const editedMessages = new Map<string, string>();
 let unpatch: () => void;
 
+export function setEditedContent(channelId: string, messageId: string, newContent: string) {
+  const key = `${channelId}:${messageId}`;
+  editedMessages.set(key, newContent);
+}
+
 export function patchMessageStore() {
-  unpatch = instead("getMessage", MessageStore, (args, orig) => {
-    const msg = orig(...args);
-    if (!msg) return msg;
-    const key = `${args[0]}_${args[1]}`;
-    if (edits[key]) {
-      return {
-        ...msg,
-        content: edits[key],
-        edited_timestamp: new Date().toISOString(),
-      };
+  unpatch = after("getMessages", MessageStore, ([channelId], res) => {
+    const messages = res?._array ?? [];
+    for (const msg of messages) {
+      const key = `${channelId}:${msg.id}`;
+      if (editedMessages.has(key)) {
+        msg.content = editedMessages.get(key)!;
+      }
     }
-    return msg;
   });
 }
 
