@@ -12,45 +12,59 @@ const MessageStore = findByStoreName("MessageStore");
 let unpatch: () => void;
 
 export function patchActionSheet() {
-  unpatch = after("openLazy", LazyActionSheet, ([, key]) => {
+  unpatch = after("openLazy", LazyActionSheet, ([component, key]) => {
     if (key !== "MessageLongPressActionSheet") return;
 
-    LazyActionSheet.openLazy = ((orig) => async (...args) => {
-      const component = await orig(...args);
-      after("default", component, ([{ message }], res) => {
-        const rows = findInReactTree(res, x =>
+    component.then((instance) => {
+      after("default", instance, ([props], res) => {
+        const buttons = findInReactTree(res, x =>
           Array.isArray(x) && x.some(y => y?.type === ActionSheetRow)
         );
-        if (!rows || rows.some(x => x?.props?.label === "Edit Message")) return;
+        if (!buttons || buttons.some(x => x?.props?.label === "Edit Message")) return;
 
-        rows.unshift(
+        const replyIndex = buttons.findIndex(x => x?.props?.label === "Reply");
+        const insertIndex = replyIndex > -1 ? replyIndex : Math.max(
+          buttons.findIndex(x => x?.props?.label === "Copy Text"),
+          0
+        );
+
+        buttons.splice(insertIndex, 0,
           <ActionSheetRow
             label="Edit Message"
-            icon={<ActionSheetRow.Icon source={getAssetIDByName("ic_pencil_24px")} />}
+            icon={
+              <ActionSheetRow.Icon
+                source={getAssetIDByName("ic_pencil_24px")}
+              />
+            }
             onPress={() => {
-              const chanId = message.channel_id;
-              const msgId = message.id;
-              const msg = MessageStore.getMessage(chanId, msgId);
-              if (!msg) return;
+              try {
+                const msgId = props?.message?.id;
+                const chanId = props?.message?.channel_id;
+                if (!msgId || !chanId) return;
 
-              showModal(
-                <ModalRoot
-                  title="Edit Message"
-                  defaultValue={msg.content}
-                  onClose={() => LazyActionSheet.hideActionSheet()}
-                  onSubmit={(newContent: string) => {
-                    const { editMessage } = findByProps("editMessage");
-                    editMessage(chanId, msgId, { content: newContent });
-                    LazyActionSheet.hideActionSheet();
-                  }}
-                />
-              );
+                const msg = MessageStore.getMessage(chanId, msgId);
+                if (!msg) return;
+
+                showModal(
+                  <ModalRoot
+                    title="Edit Message"
+                    defaultValue={msg.content}
+                    onClose={() => LazyActionSheet.hideActionSheet()}
+                    onSubmit={(newContent: string) => {
+                      const { editMessage } = findByProps("editMessage");
+                      editMessage(chanId, msgId, { content: newContent });
+                      LazyActionSheet.hideActionSheet();
+                    }}
+                  />
+                );
+              } catch (e) {
+                console.error("Edit Message error", e);
+              }
             }}
           />
         );
       });
-      return component;
-    })(LazyActionSheet.openLazy);
+    });
   });
 }
 
