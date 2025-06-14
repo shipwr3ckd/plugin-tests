@@ -1,82 +1,80 @@
-import { findByProps, findByStoreName } from "@vendetta/metro";
-import { React } from "@vendetta/metro/common";
-import { after } from "@vendetta/patcher";
-import { getAssetIDByName } from "@vendetta/ui/assets";
-import { findInReactTree } from "@vendetta/utils";
+import { findByProps, findByDisplayName } from "@metro";
+import { findAssetId } from "@lib/api/assets";
 
-// Core Discord stores & utils
-const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
-const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
-const MessageStore = findByStoreName("MessageStore");
-const UserStore = findByStoreName("UserStore");
+// Lazy load ActionSheet show/hide functions
+const { showSimpleActionSheet, hideActionSheet } = findByProps("showSimpleActionSheet");
+
+// MessageActions contains editMessage method to open the native editor
 const MessageActions = findByProps("editMessage");
 
-// Access native MessageInput component props (onChange, etc)
-const MessageInput = findByProps("defaultValue", "onChange");
+// Discord's built-in Edit icon asset
+const EditIcon = findAssetId("EditIcon");
 
-// To patch message locally in client
-const patchMessageLocally = (channelId, messageId, newContent) => {
-  // Patch the message content locally in MessageStore cache
-  const msg = MessageStore.getMessage(channelId, messageId);
-  if (!msg) return;
-  msg.content = newContent;
-  MessageStore._emitChange(); // Notify UI of change (some versions may require this)
-};
+// Helper: Try to extract the message from various prop keys
+function getMessageFromProps(props: any) {
+  if (props.message) return props.message;
+  if (props.messageData) return props.messageData;
+  if (props.targetMessage) return props.targetMessage;
+  if (props.channel && props.channel.message) return props.channel.message;
+  return null;
+}
 
-let unpatch;
+export function patchMessageLongPressActionSheet() {
+  const MessageLongPressActionSheet = findByDisplayName("MessageLongPressActionSheet");
+  if (!MessageLongPressActionSheet) {
+    console.warn("MessageLongPressActionSheet not found");
+    return;
+  }
 
-export const onUnload = () => {
-  unpatch?.();
-};
+  // Patch render method to add our custom button
+  const originalRender = MessageLongPressActionSheet.prototype.render;
+  MessageLongPressActionSheet.prototype.render = function patchedRender() {
+    const original = originalRender.call(this);
+    const props = this.props;
 
-export default function patchActionSheet() {
-  unpatch = after("openLazy", LazyActionSheet, ([component, key]) => {
-    if (key !== "MessageLongPressActionSheet") return;
+    // Find message safely
+    const msg = getMessageFromProps(props);
 
-    component.then((instance) => {
-      after("default", instance, ([props], res) => {
-        const buttons = findInReactTree(res, (x) =>
-          Array.isArray(x) && x.some((y) => y?.type === ActionSheetRow)
-        );
-        if (!buttons || buttons.some((x) => x?.props?.label === "Edit Message")) return;
+    // If no message found, render original only
+    if (!msg) return original;
 
-        const replyIndex = buttons.findIndex((x) => x?.props?.label === "Reply");
-        const insertIndex =
-          replyIndex > -1
-            ? replyIndex
-            : Math.max(buttons.findIndex((x) => x?.props?.label === "Copy Text"), 0);
+    // Add new edit button to action sheet options
+    const newEditAction = {
+      label: "Edit Message",
+      icon: EditIcon,
+      async onPress() {
+        hideActionSheet(); // close action sheet first
 
-        buttons.splice(
-          insertIndex,
-          0,
-          <ActionSheetRow
-            label="Edit Message"
-            icon={<ActionSheetRow.Icon source={getAssetIDByName("ic_edit_24px")} />}
-            onPress={() => {
-              const msg = props.message;
-              if (!msg) return;
+        // Open Discord's native message editor for the selected message
+        MessageActions.editMessage(msg.channel_id, msg.id);
+      }
+    };
 
-              LazyActionSheet.hideActionSheet();
+    // Clone the original actions/options array and append ours
+    // The actions are usually in original.props.children or original.props.content.props.children
+    // This depends on Discord version, so try common patterns:
 
-              // Trigger native message edit UI
-              // 1. Call native editMessage action to open the edit UI
-              MessageActions.editMessage(msg.channel_id, msg.id);
+    let patchedChildren = original.props?.children;
 
-              // 2. Prefill input box by patching MessageInput's onChange or by dispatching action (depends on your Vendetta version)
-              //    This part varies; simplest is to patch MessageInput's internal state directly or simulate user typing.
-              //    For example:
-              setTimeout(() => {
-                if (MessageInput && MessageInput.setText) {
-                  MessageInput.setText(msg.content);
-                }
-              }, 50);
+    // Find the actions array to insert into:
+    if (Array.isArray(patchedChildren)) {
+      // If array, try to find the actions container
+      for (let i = 0; i < patchedChildren.length; i++) {
+        const child = patchedChildren[i];
+        if (child?.props?.options) {
+          // Add our action to options
+          child.props.options = [...child.props.options, newEditAction];
+          return original;
+        }
+      }
+    } else if (patchedChildren?.props?.options) {
+      // If single object with options prop
+      patchedChildren.props.options = [...patchedChildren.props.options, newEditAction];
+      return original;
+    }
 
-              // 3. Patch message locally on send — ideally handled by native editMessage flow, so no manual patch needed.
-              // If you want to patch manually, you can patch MessageStore content on send event.
-            }}
-          />
-        );
-      });
-    });
-  });
+    // If can't find options list, fallback to rendering original without edit button
+    console.warn("Could not patch actionsheet options");
+    return original;
+  };
 }

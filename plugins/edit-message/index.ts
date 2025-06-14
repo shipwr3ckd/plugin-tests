@@ -1,9 +1,5 @@
-import patchActionSheet, { onUnload } from "./actionsheet";
+import { patchMessageLongPressActionSheet } from "./actionsheet";
 
-export const onLoad = () => {
-  patchActionSheet();
-};
-
-export const onUnloadPlugin = () => {
-  onUnload();
+export default () => {
+  patchMessageLongPressActionSheet();
 };
