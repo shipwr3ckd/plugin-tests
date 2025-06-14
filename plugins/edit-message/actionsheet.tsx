@@ -3,10 +3,12 @@ import { React } from "@vendetta/metro/common";
 import { after } from "@vendetta/patcher";
 import { getAssetIDByName } from "@vendetta/ui/assets";
 import { findInReactTree } from "@vendetta/utils";
+import { setEditedContent } from "./localedit";
 
 const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
 const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
 const MessageStore = findByStoreName("MessageStore");
+const UserStore = findByStoreName("UserStore");
 
 let unpatch: () => void;
 
@@ -39,13 +41,41 @@ export function patchActionSheet() {
               try {
                 const chanId = props?.message?.channel_id;
                 const msgId = props?.message?.id;
-
                 if (!chanId || !msgId) return;
+
+                const msg = MessageStore.getMessage(chanId, msgId);
+                if (!msg) return;
+
+                const currentUserId = UserStore.getCurrentUser()?.id;
+                if (!currentUserId) return;
+
+                // Backup original author
+                const originalAuthor = msg.author;
+
+                // Spoof author to allow editing
+                msg.author = {
+                  ...originalAuthor,
+                  id: currentUserId,
+                };
 
                 const { startEditMessage } = findByProps("startEditMessage");
                 startEditMessage(chanId, msgId);
+
+                // Listen for your edit submission
+                const interval = setInterval(() => {
+                  const newMsg = MessageStore.getMessage(chanId, msgId);
+                  if (newMsg?.content !== msg.content) {
+                    setEditedContent(chanId, msgId, newMsg.content);
+                    clearInterval(interval);
+                  }
+                }, 200);
+
+                // Restore author
+                setTimeout(() => {
+                  msg.author = originalAuthor;
+                }, 100);
               } catch (e) {
-                console.error("Edit Message error", e);
+                console.error("Edit Message spoof error:", e);
               } finally {
                 LazyActionSheet.hideActionSheet();
               }
