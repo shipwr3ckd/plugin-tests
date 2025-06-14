@@ -1,15 +1,29 @@
-import { after } from "@vendetta/patcher";
 import { findByProps, findByStoreName } from "@vendetta/metro";
 import { React } from "@vendetta/metro/common";
-import { showAlert, dismissAlert } from "@vendetta/ui/alerts";
-import { AlertModal, Button, Stack, TextInput } from "@vendetta/ui/components";
-import { findAssetIdByName } from "@vendetta/ui/assets";
+import { after } from "@vendetta/patcher";
+import { getAssetIDByName } from "@vendetta/ui/assets";
+import { findInReactTree } from "@vendetta/utils";
 
+// Core Discord stores & utils
 const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
 const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
 const MessageStore = findByStoreName("MessageStore");
+const UserStore = findByStoreName("UserStore");
+const MessageActions = findByProps("editMessage");
 
-let unpatch: () => void;
+// Access native MessageInput component props (onChange, etc)
+const MessageInput = findByProps("defaultValue", "onChange");
+
+// To patch message locally in client
+const patchMessageLocally = (channelId, messageId, newContent) => {
+  // Patch the message content locally in MessageStore cache
+  const msg = MessageStore.getMessage(channelId, messageId);
+  if (!msg) return;
+  msg.content = newContent;
+  MessageStore._emitChange(); // Notify UI of change (some versions may require this)
+};
+
+let unpatch;
 
 export const onUnload = () => {
   unpatch?.();
@@ -21,92 +35,48 @@ export default function patchActionSheet() {
 
     component.then((instance) => {
       after("default", instance, ([props], res) => {
-        // Find buttons container in React tree
-        const buttons = res?.props?.children?.[1]?.props?.children;
-        if (!buttons) return;
+        const buttons = findInReactTree(res, (x) =>
+          Array.isArray(x) && x.some((y) => y?.type === ActionSheetRow)
+        );
+        if (!buttons || buttons.some((x) => x?.props?.label === "Edit Message")) return;
 
-        // Don't add if already exists
-        if (buttons.some((b) => b?.props?.label === "Edit Message")) return;
+        const replyIndex = buttons.findIndex((x) => x?.props?.label === "Reply");
+        const insertIndex =
+          replyIndex > -1
+            ? replyIndex
+            : Math.max(buttons.findIndex((x) => x?.props?.label === "Copy Text"), 0);
 
-        // Find Reply button index to insert before
-        const replyIndex = buttons.findIndex((b) => b?.props?.label === "Reply");
-        const insertIndex = replyIndex >= 0 ? replyIndex : buttons.length;
-
-        buttons.splice(insertIndex, 0,
+        buttons.splice(
+          insertIndex,
+          0,
           <ActionSheetRow
             label="Edit Message"
-            icon={<ActionSheetRow.Icon source={findAssetIdByName("ic_edit_24px")} />}
+            icon={<ActionSheetRow.Icon source={getAssetIDByName("ic_edit_24px")} />}
             onPress={() => {
-              const message = props.message;
-              if (!message) return;
+              const msg = props.message;
+              if (!msg) return;
 
               LazyActionSheet.hideActionSheet();
 
-              // Show edit modal
-              showAlert("Edit Message", <EditMessageModal message={message} />);
+              // Trigger native message edit UI
+              // 1. Call native editMessage action to open the edit UI
+              MessageActions.editMessage(msg.channel_id, msg.id);
+
+              // 2. Prefill input box by patching MessageInput's onChange or by dispatching action (depends on your Vendetta version)
+              //    This part varies; simplest is to patch MessageInput's internal state directly or simulate user typing.
+              //    For example:
+              setTimeout(() => {
+                if (MessageInput && MessageInput.setText) {
+                  MessageInput.setText(msg.content);
+                }
+              }, 50);
+
+              // 3. Patch message locally on send — ideally handled by native editMessage flow, so no manual patch needed.
+              // If you want to patch manually, you can patch MessageStore content on send event.
             }}
           />
         );
       });
     });
   });
-}
-
-// Modal component to edit message content
-function EditMessageModal({ message }: { message: any }) {
-  const [text, setText] = React.useState(message.content);
-  const [loading, setLoading] = React.useState(false);
-  const MessageStore = findByStoreName("MessageStore");
-
-  async function onConfirm() {
-    setLoading(true);
-    try {
-      // Patch message locally
-      const editedMessage = { ...message, content: text };
-      MessageStore.updateMessage(editedMessage.channel_id, editedMessage.id, editedMessage);
-
-      // TODO: Here you can add code to send API request to Discord to actually edit the message
-
-      dismissAlert("Edit Message");
-    } catch (e) {
-      console.error("Edit failed", e);
-      setLoading(false);
-    }
-  }
-
-  return (
-    <AlertModal
-      title="Editing Message"
-      content={null}
-      extraContent={
-        <Stack style={{ marginTop: -12 }}>
-          <TextInput
-            autoFocus
-            value={text}
-            onChange={setText}
-            multiline
-            numberOfLines={4}
-            returnKeyType="done"
-            onSubmitEditing={onConfirm}
-          />
-        </Stack>
-      }
-      actions={
-        <Stack>
-          <Button
-            loading={loading}
-            text="Confirm"
-            variant="primary"
-            disabled={!text.trim()}
-            onPress={onConfirm}
-          />
-          <Button
-            text="Cancel"
-            variant="secondary"
-            onPress={() => dismissAlert("Edit Message")}
-          />
-        </Stack>
-      }
-    />
-  );
 }
