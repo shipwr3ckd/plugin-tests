@@ -1,12 +1,5 @@
-import { patchActionSheet, unpatchActionSheet } from "./actionsheet";
-import { patchMessageStore, unpatchMessageStore } from "./localedit";
+import { patchMessageActionSheet } from "./actionsheet";
 
-export const onLoad = () => {
-  patchMessageStore();
-  patchActionSheet();
-};
-
-export const onUnload = () => {
-  unpatchActionSheet();
-  unpatchMessageStore();
-};
+export default function onLoad() {
+  patchMessageActionSheet();
+}

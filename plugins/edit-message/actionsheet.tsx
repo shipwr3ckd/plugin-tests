@@ -1,57 +1,45 @@
-import { findByProps, findByStoreName } from "@vendetta/metro";
-import { React } from "@vendetta/metro/common";
-import { after } from "@vendetta/patcher";
-import { getAssetIDByName } from "@vendetta/ui/assets";
-import { findInReactTree } from "@vendetta/utils";
-import { showEditModal } from "./editModal";
+import { findByProps } from "@metro";
+import { openAlert } from "@lib/ui/alerts";
+import React from "react";
+import { EditMessageModal } from "./EditMessageModal";
 
-const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
-const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
-const MessageStore = findByStoreName("MessageStore");
+const MessageActionsSheet = findByProps("showSimpleActionSheet");
 
-let unpatch: () => void;
+export function patchMessageActionSheet() {
+  if (!MessageActionsSheet) return;
 
-export function patchActionSheet() {
-  unpatch = after("openLazy", LazyActionSheet, ([component, key]) => {
-    if (key !== "MessageLongPressActionSheet") return;
+  // Patch method that creates action sheet options for a message
+  const original = MessageActionsSheet.showSimpleActionSheet;
 
-    component.then((inst) => {
-      after("default", inst, ([props], res) => {
-        const buttons = findInReactTree(res, x =>
-          Array.isArray(x) && x.some(y => y?.type === ActionSheetRow)
-        );
-        if (!buttons || buttons.some(x => x?.props?.label === "Edit Message")) return;
+  MessageActionsSheet.showSimpleActionSheet = function (options) {
+    // Only patch for message action sheets
+    if (options?.key === "MessageActionSheet" && options?.options) {
+      // Add Edit option before Reply or near it
+      options.options.unshift({
+        label: "Edit Message",
+        icon: "EditIcon", // or findAssetId("EditIcon") if needed
+        onPress: () => {
+          // Open the EditMessageModal
+          const message = options.message;
+          if (!message) return;
 
-        const idx = Math.max(
-          buttons.findIndex(x => x?.props?.label === "Reply"),
-          buttons.findIndex(x => x?.props?.label === "Copy Text"),
-          0
-        );
+          openAlert("EditMessageModal", <EditMessageModal
+            initialText={message.content || ""}
+            onConfirm={(editedText) => {
+              // Patch the message content locally
+              message.content = editedText;
 
-        buttons.splice(idx, 0,
-          <ActionSheetRow
-            label="Edit Message"
-            icon={<ActionSheetRow.Icon source={getAssetIDByName("ic_pencil_24px")} />}
-            onPress={() => {
-              const { channel_id, id } = props.message!;
-              const msg = MessageStore.getMessage(channel_id, id);
-              if (!msg) return;
-
-              showEditModal({
-                initialText: msg.content,
-                channelId: channel_id,
-                messageId: id,
-              });
-
-              LazyActionSheet.hideActionSheet();
+              // Also update message state so UI reflects edit
+              const messageStore = findByProps("updateMessage");
+              if (messageStore?.updateMessage) {
+                messageStore.updateMessage(message.channel_id, message.id, message);
+              }
             }}
-          />
-        );
+          />);
+        },
       });
-    });
-  });
-}
+    }
 
-export function unpatchActionSheet() {
-  unpatch?.();
+    return original.call(this, options);
+  };
 }
