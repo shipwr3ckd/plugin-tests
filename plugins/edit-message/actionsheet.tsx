@@ -3,87 +3,78 @@ import { React } from "@vendetta/metro/common";
 import { after } from "@vendetta/patcher";
 import { getAssetIDByName } from "@vendetta/ui/assets";
 import { findInReactTree } from "@vendetta/utils";
+import { openModal, ModalComponent } from "@vendetta/ui/modals";
 import { setEditedContent } from "./localedit";
 
 const LazyActionSheet = findByProps("openLazy", "hideActionSheet");
 const ActionSheetRow = findByProps("ActionSheetRow")?.ActionSheetRow;
 const MessageStore = findByStoreName("MessageStore");
-const UserStore = findByStoreName("UserStore");
 
 let unpatch: () => void;
+
+const EditModal = (props: { channel: string; id: string; content: string }) => {
+  const [text, setText] = React.useState(props.content);
+  return (
+    <ModalComponent
+      title="Edit Message"
+      onClose={() => {}}
+      footer={
+        <>
+          <ModalComponent.Cancel label="Cancel" />
+          <ModalComponent.Confirm
+            label="Save"
+            onPress={() => {
+              setEditedContent(props.channel, props.id, text);
+              ModalComponent.close();
+            }}
+          />
+        </>
+      }
+    >
+      <ModalComponent.TextInput
+        defaultValue={props.content}
+        multiline
+        onChangeText={setText}
+        style={{ minHeight: 100 }}
+      />
+    </ModalComponent>
+  );
+};
 
 export function patchActionSheet() {
   unpatch = after("openLazy", LazyActionSheet, ([component, key]) => {
     if (key !== "MessageLongPressActionSheet") return;
-
-    component.then((instance) => {
-      after("default", instance, ([props], res) => {
-        const buttons = findInReactTree(res, x =>
-          Array.isArray(x) && x.some(y => y?.type === ActionSheetRow)
+    component.then((inst) =>
+      after("default", inst, ([props], res) => {
+        const buttons = findInReactTree(res, (x) =>
+          Array.isArray(x) && x.some((y) => y?.type === ActionSheetRow)
         );
-        if (!buttons || buttons.some(x => x?.props?.label === "Edit Message")) return;
+        if (!buttons || buttons.some((x) => x?.props?.label === "Edit Message"))
+          return;
 
-        const replyIndex = buttons.findIndex(x => x?.props?.label === "Reply");
-        const insertIndex = replyIndex > -1 ? replyIndex : Math.max(
-          buttons.findIndex(x => x?.props?.label === "Copy Text"),
+        const idx = Math.max(
+          buttons.findIndex((x) => x?.props?.label === "Reply"),
+          buttons.findIndex((x) => x?.props?.label === "Copy Text"),
           0
         );
 
-        buttons.splice(insertIndex, 0,
+        buttons.splice(idx, 0,
           <ActionSheetRow
             label="Edit Message"
-            icon={
-              <ActionSheetRow.Icon
-                source={getAssetIDByName("ic_pencil_24px")}
-              />
-            }
+            icon={<ActionSheetRow.Icon source={getAssetIDByName("ic_pencil_24px")} />}
             onPress={() => {
-              try {
-                const chanId = props?.message?.channel_id;
-                const msgId = props?.message?.id;
-                if (!chanId || !msgId) return;
-
-                const msg = MessageStore.getMessage(chanId, msgId);
-                if (!msg) return;
-
-                const currentUserId = UserStore.getCurrentUser()?.id;
-                if (!currentUserId) return;
-
-                // Backup original author
-                const originalAuthor = msg.author;
-
-                // Spoof author to allow editing
-                msg.author = {
-                  ...originalAuthor,
-                  id: currentUserId,
-                };
-
-                const { startEditMessage } = findByProps("startEditMessage");
-                startEditMessage(chanId, msgId);
-
-                // Listen for your edit submission
-                const interval = setInterval(() => {
-                  const newMsg = MessageStore.getMessage(chanId, msgId);
-                  if (newMsg?.content !== msg.content) {
-                    setEditedContent(chanId, msgId, newMsg.content);
-                    clearInterval(interval);
-                  }
-                }, 200);
-
-                // Restore author
-                setTimeout(() => {
-                  msg.author = originalAuthor;
-                }, 100);
-              } catch (e) {
-                console.error("Edit Message spoof error:", e);
-              } finally {
-                LazyActionSheet.hideActionSheet();
-              }
+              const { channel_id, id } = props.message!;
+              const orig = MessageStore.getMessage(channel_id, id);
+              if (!orig) return;
+              openModal((close) => (
+                <EditModal channel={channel_id} id={id} content={orig.content} />
+              ));
+              LazyActionSheet.hideActionSheet();
             }}
           />
         );
-      });
-    });
+      })
+    );
   });
 }
 

@@ -2,31 +2,26 @@ import { findByStoreName } from "@vendetta/metro";
 import { instead } from "@vendetta/patcher";
 
 const MessageStore = findByStoreName("MessageStore");
+const edits: Record<string, string> = {};
 
-const editedMessages: Record<string, string> = {};
+export function setEditedContent(ch: string, id: string, text: string) {
+  edits[`${ch}_${id}`] = text;
+}
 
 let unpatch: () => void;
-
-export function setEditedContent(channelId: string, messageId: string, newContent: string) {
-  const key = `${channelId}_${messageId}`;
-  editedMessages[key] = newContent;
-}
 
 export function patchMessageStore() {
   unpatch = instead("getMessage", MessageStore, (args, orig) => {
     const msg = orig(...args);
     if (!msg) return msg;
-
-    const [channelId, messageId] = args;
-    const key = `${channelId}_${messageId}`;
-    if (editedMessages[key]) {
+    const key = `${args[0]}_${args[1]}`;
+    if (edits[key]) {
       return {
         ...msg,
-        content: editedMessages[key],
+        content: edits[key],
         edited_timestamp: new Date().toISOString(),
       };
     }
-
     return msg;
   });
 }
