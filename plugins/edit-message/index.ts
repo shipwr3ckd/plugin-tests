@@ -1,5 +1,10 @@
-import { patchMessageActionSheet } from "./actionsheet";
+import patchActionSheet from "./actionsheet";
 
-export default function onLoad() {
-  patchMessageActionSheet();
-}
+export const onLoad = () => {
+  patchActionSheet();
+};
+
+export const onUnload = () => {
+  // Unpatch all patches on unload to prevent leaks
+  import("@vendetta/patcher").then(({ unpatchAll }) => unpatchAll());
+};
