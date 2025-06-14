@@ -1,0 +1,11 @@
+{
+    "name": "Edit Message",
+    "description": "Prank your friends by editing their message.",
+    "authors": [
+        {
+            "name": "シグマ siguma",
+            "id": "737597276339437578"
+        }
+    ],
+    "main": "index.tsx"
+}
